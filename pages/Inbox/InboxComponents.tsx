@@ -1,11 +1,10 @@
-
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { createEditor, Element as SlateElement, Transforms, Text, Range, Editor } from 'slate';
 import { Slate, Editable, withReact, useSelected, useFocused, ReactEditor } from 'slate-react';
 import { withHistory } from 'slate-history';
 import { useNavigate } from 'react-router-dom';
 import isHotkey from 'is-hotkey';
-import { ArrowLeft, Star, Trash2, Reply, MoreVertical, Paperclip, Send, X, Bold, Italic, Underline, List, ListOrdered, Link as LinkIcon, AlignLeft, AlignCenter, AlignRight, AlignJustify, Check, ExternalLink, FileDown, Tag, Search, Forward, ChevronDown, CornerUpLeft, CornerUpRight, AlertCircle, ShieldAlert, Bug } from 'lucide-react';
+import { ArrowLeft, Star, Trash2, Reply, MoreVertical, Paperclip, Send, X, Bold, Italic, Underline, List, ListOrdered, Link as LinkIcon, AlignLeft, AlignCenter, AlignRight, AlignJustify, Check, ExternalLink, FileDown, Tag, Search, Forward, ChevronDown, CornerUpLeft, CornerUpRight, AlertCircle, ShieldAlert, Bug, CheckCircle } from 'lucide-react';
 import { Email } from '../../types';
 import { Button, cn, Input } from '../../components/UI';
 import { MOCK_LABELS } from '../../services/mockData';
@@ -481,15 +480,23 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
   );
 };
 
+// --- Salesforce Icon ---
+const SalesforceIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className} xmlns="http://www.w3.org/2000/svg">
+    <path d="M16.1 7C16.1 6.3 16 5.6 15.8 5C15.4 3.3 13.9 2 12 2C9.8 2 8 3.8 8 6C8 6.4 8.1 6.8 8.2 7.1C5.2 7.6 3 10.2 3 13.5C3 17.1 5.9 20 9.5 20H16.5C19.5 20 22 17.5 22 14.5C22 11.2 19.4 8.6 16.1 8.5V7Z" />
+  </svg>
+);
+
 // --- Email Detail View ---
 interface EmailDetailProps {
   email: Email;
   onBack: () => void;
   onDelete: (id: string) => void;
   onEscalate?: (id: string) => void;
+  onComplete?: (id: string) => void;
 }
 
-export const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onDelete, onEscalate }) => {
+export const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onDelete, onEscalate, onComplete }) => {
   const [activeLabels, setActiveLabels] = useState<string[]>(email.labels || []);
   const [isLabelMenuOpen, setIsLabelMenuOpen] = useState(false);
   const [labelSearch, setLabelSearch] = useState('');
@@ -638,6 +645,32 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onDelet
 
         {/* Action Right Side */}
         <div className="flex items-center space-x-2">
+           {/* View Lead Button */}
+           <Button 
+               variant="secondary" 
+               size="sm" 
+               className="bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-[#00A1E0]"
+               onClick={() => window.open('https://login.salesforce.com', '_blank')}
+           >
+               <SalesforceIcon className="w-5 h-5 mr-2 text-[#00A1E0]" />
+               View Lead
+           </Button>
+
+           {/* Complete Button */}
+           <Button 
+               variant={email.isCompleted ? "secondary" : "outline"}
+               size="sm"
+               className={cn(
+                   email.isCompleted 
+                       ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100" 
+                       : "text-slate-600 border-slate-200 hover:border-green-500 hover:text-green-600 hover:bg-green-50"
+               )}
+               onClick={() => onComplete && onComplete(email.id)}
+           >
+               <CheckCircle size={16} className={cn("mr-2", email.isCompleted && "fill-green-200")} />
+               {email.isCompleted ? "Completed" : "Complete"}
+           </Button>
+           
            {email.isEscalated ? (
              <Button 
                variant="danger" 
@@ -698,7 +731,7 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onDelet
                               variant="ghost" 
                               size="sm" 
                               className="h-8 px-2 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700"
-                              onClick={() => navigate('/debugger')}
+                              onClick={() => navigate(`/debugger/${email.id}`)}
                               title="Debug this message"
                            >
                               <Bug size={14} className="mr-1.5" /> Debug

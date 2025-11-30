@@ -4,7 +4,7 @@ import { MOCK_PROMPTS } from '../../services/mockData';
 import { Prompt } from '../../types';
 import { Button, Input, Modal, Badge } from '../../components/UI';
 
-export const PromptLibrary = () => {
+export const Playground = () => {
   const [prompts, setPrompts] = useState<Prompt[]>(MOCK_PROMPTS);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -57,7 +57,7 @@ export const PromptLibrary = () => {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Prompt Library</h1>
+            <h1 className="text-3xl font-bold text-slate-900">Playground</h1>
             <p className="text-slate-500 mt-2">Manage your email templates and AI prompts.</p>
           </div>
           <Button onClick={openNew} className="shadow-lg shadow-indigo-200">

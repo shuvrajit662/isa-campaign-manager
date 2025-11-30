@@ -1,4 +1,5 @@
 
+
 export interface User {
   id: string;
   name: string;
@@ -41,6 +42,11 @@ export interface Email {
   campaignId?: string; // Links email to a campaign
   thread?: ThreadItem[]; // Full conversation history
   isEscalated?: boolean;
+  isCompleted?: boolean;
+  csat?: {
+    score: number;
+    comment: string;
+  };
 }
 
 export interface Prompt {
@@ -49,6 +55,16 @@ export interface Prompt {
   content: string;
   tags: string[];
   lastEdited: string;
+}
+
+export interface TestExecution {
+  id: string;
+  email: string;
+  conversationId: string;
+  messageId: string;
+  executionType: 'Full Trace' | 'Assistant Run';
+  assistantName?: string;
+  timestamp: string;
 }
 
 export enum FolderType {

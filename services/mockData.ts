@@ -1,5 +1,5 @@
 
-import { Campaign, Email, FolderType, Prompt, User } from '../types';
+import { Campaign, Email, FolderType, Prompt, User, TestExecution } from '../types';
 
 export const MOCK_CAMPAIGNS: Campaign[] = [
   { id: 'c1', name: 'Talk to Sales', status: 'active' },
@@ -41,6 +41,77 @@ export const MOCK_PROMPTS: Prompt[] = [
     tags: ['Follow-up', 'Sales'], 
     lastEdited: '2023-10-26T14:30:00Z' 
   },
+];
+
+export const MOCK_TEST_EXECUTIONS: TestExecution[] = [
+  {
+    id: 'te1',
+    email: 'sarah@skynet.com',
+    conversationId: 'AC57bed091a6a4108cf257065048c0c344',
+    messageId: 'MG99123847102938',
+    executionType: 'Full Trace',
+    timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString()
+  },
+  {
+    id: 'te2',
+    email: 'customer@acme.inc',
+    conversationId: 'AC8829103948572819203948572819',
+    messageId: 'MG1029384756',
+    executionType: 'Assistant Run',
+    assistantName: 'Escalation Check',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString()
+  },
+  {
+    id: 'te3',
+    email: 'bob@builder.com',
+    conversationId: 'AC1122334455667788990011223344',
+    messageId: 'MG5566778899',
+    executionType: 'Assistant Run',
+    assistantName: 'Prompt Builder',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString()
+  },
+  {
+    id: 'te4',
+    email: 'alice@wonderland.net',
+    conversationId: 'AC77441122558833669900114477',
+    messageId: 'MG2255881144',
+    executionType: 'Full Trace',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString()
+  },
+  {
+    id: 'te5',
+    email: 'compliance@twilio.com',
+    conversationId: 'AC00998877665544332211009988',
+    messageId: 'MG3366992255',
+    executionType: 'Assistant Run',
+    assistantName: 'Sales Manager / Guardrail',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 25).toISOString()
+  },
+  {
+    id: 'te6',
+    email: 'security@twilio.com',
+    conversationId: 'AC12312312312312312312312312',
+    messageId: 'MG9879879879',
+    executionType: 'Full Trace',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString()
+  },
+  {
+    id: 'te7',
+    email: 'new_lead@startup.io',
+    conversationId: 'AC45645645645645645645645645',
+    messageId: 'MG6546546546',
+    executionType: 'Assistant Run',
+    assistantName: 'Core Assistant Helper',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 50).toISOString()
+  },
+  {
+    id: 'te8',
+    email: 'vip@enterprise.com',
+    conversationId: 'AC78978978978978978978978978',
+    messageId: 'MG3213213213',
+    executionType: 'Full Trace',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString()
+  }
 ];
 
 const THREAD_1 = [
@@ -105,7 +176,8 @@ export const MOCK_EMAILS: Email[] = [
     folder: FolderType.INBOX,
     labels: ['Work', 'Rapid Riser'],
     avatarColor: 'bg-green-500',
-    campaignId: 'c2'
+    campaignId: 'c2',
+    isCompleted: true
   },
   {
     id: 'e3',
@@ -121,7 +193,12 @@ export const MOCK_EMAILS: Email[] = [
     folder: FolderType.INBOX,
     labels: ['Compliance'],
     avatarColor: 'bg-purple-500',
-    campaignId: 'c3'
+    campaignId: 'c3',
+    isCompleted: true,
+    csat: {
+      score: 4,
+      comment: "The automated verification updates were very timely and helpful."
+    }
   },
   {
     id: 'e4',

@@ -1,13 +1,13 @@
+
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Mail, Settings, LayoutGrid, Database, Bug } from 'lucide-react';
+import { Mail, LayoutGrid, Bug, History } from 'lucide-react';
 import { cn } from './UI';
 
 const NAV_ITEMS = [
   { icon: Mail, label: 'Inbox', path: '/inbox' },
-  { icon: Database, label: 'Prompt Library', path: '/prompts' },
-  { icon: Bug, label: 'Debugger', path: '/debugger' },
-  { icon: Settings, label: 'Admin Console', path: '/admin' },
+  { icon: Bug, label: 'Debugger', path: '/debugger/AC57bed091a6a4108cf257065048c0c344' },
+  { icon: History, label: 'Test Executions', path: '/test-executions' },
 ];
 
 export const Sidebar = () => {

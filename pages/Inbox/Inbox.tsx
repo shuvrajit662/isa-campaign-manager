@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Inbox as InboxIcon, Send as SendIcon, File as DraftIcon, Trash2, Tag, Star, ChevronDown, Filter, Keyboard, Command } from 'lucide-react';
+import { Search, Inbox as InboxIcon, Send as SendIcon, File as DraftIcon, Trash2, Tag, Star, ChevronDown, Filter, Keyboard, Command, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MOCK_EMAILS, MOCK_CAMPAIGNS, MOCK_LABELS } from '../../services/mockData';
 import { Email, FolderType } from '../../types';
 import { cn, Button, Modal } from '../../components/UI';
@@ -14,11 +14,15 @@ export const Inbox = () => {
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  
   // Campaign Filter State
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Computed filtered emails
+  // Computed filtered emails (All matches)
   const filteredEmails = useMemo(() => {
     return emails
       .filter(e => e.folder === selectedFolder)
@@ -33,16 +37,41 @@ export const Inbox = () => {
       );
   }, [emails, selectedFolder, searchQuery, selectedCampaignId]);
 
+  // Pagination Logic
+  const totalItems = filteredEmails.length;
+  const totalPages = Math.ceil(totalItems / pageSize);
+  const startIdx = (currentPage - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, totalItems);
+  
+  const paginatedEmails = useMemo(() => {
+    return filteredEmails.slice(startIdx, endIdx);
+  }, [filteredEmails, startIdx, endIdx]);
+
   const selectedEmail = useMemo(() => 
     emails.find(e => e.id === selectedEmailId), 
   [emails, selectedEmailId]);
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedFolder, searchQuery, selectedCampaignId, pageSize]);
+
   // Default Selection Effect
   useEffect(() => {
-    if (!selectedEmailId && filteredEmails.length > 0 && window.innerWidth > 1024) {
-      setSelectedEmailId(filteredEmails[0].id);
+    // If we have emails on the current page and nothing is selected (or selection is lost/filtered out)
+    // we can auto-select the first one for desktop experience.
+    if (window.innerWidth > 1024 && paginatedEmails.length > 0) {
+       // Check if currently selected email is still visible in the current paginated view.
+       // If not, or if nothing is selected, select the first of the page.
+       const isSelectedVisible = selectedEmailId && paginatedEmails.some(e => e.id === selectedEmailId);
+       
+       if (!selectedEmailId || !isSelectedVisible) {
+          setSelectedEmailId(paginatedEmails[0].id);
+       }
+    } else if (paginatedEmails.length === 0) {
+       setSelectedEmailId(null);
     }
-  }, [filteredEmails, selectedEmailId]);
+  }, [paginatedEmails, selectedEmailId]);
 
   // Keyboard Navigation Effect (List)
   useEffect(() => {
@@ -53,33 +82,37 @@ export const Inbox = () => {
 
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
-        const currentIndex = filteredEmails.findIndex(e => e.id === selectedEmailId);
+        const currentIndex = paginatedEmails.findIndex(e => e.id === selectedEmailId);
         
-        // If nothing selected, select first
-        if (currentIndex === -1 && filteredEmails.length > 0) {
-          setSelectedEmailId(filteredEmails[0].id);
+        // If nothing selected or not in view, select first of view
+        if (currentIndex === -1 && paginatedEmails.length > 0) {
+          setSelectedEmailId(paginatedEmails[0].id);
           return;
         }
 
         let newIndex = currentIndex;
         if (e.key === 'ArrowDown') {
-          newIndex = Math.min(filteredEmails.length - 1, currentIndex + 1);
+          newIndex = Math.min(paginatedEmails.length - 1, currentIndex + 1);
         } else {
           newIndex = Math.max(0, currentIndex - 1);
         }
 
         if (newIndex !== currentIndex) {
-          const nextEmail = filteredEmails[newIndex];
+          const nextEmail = paginatedEmails[newIndex];
           setSelectedEmailId(nextEmail.id);
           // Scroll into view
           document.getElementById(`email-item-${nextEmail.id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
+      } else if (e.key === 'ArrowLeft') {
+         if (currentPage > 1) setCurrentPage(p => p - 1);
+      } else if (e.key === 'ArrowRight') {
+         if (currentPage < totalPages) setCurrentPage(p => p + 1);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredEmails, selectedEmailId, isComposeOpen, isShortcutsOpen]);
+  }, [paginatedEmails, selectedEmailId, isComposeOpen, isShortcutsOpen, currentPage, totalPages]);
 
   const handleCampaignChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newId = e.target.value;
@@ -98,6 +131,10 @@ export const Inbox = () => {
 
   const handleEscalate = (id: string) => {
     setEmails(prev => prev.map(e => e.id === id ? { ...e, isEscalated: true } : e));
+  };
+  
+  const handleComplete = (id: string) => {
+    setEmails(prev => prev.map(e => e.id === id ? { ...e, isCompleted: !e.isCompleted } : e));
   };
 
   const handleSendEmail = (newEmail: Partial<Email>) => {
@@ -196,6 +233,30 @@ export const Inbox = () => {
           </div>
 
           <div className="flex items-center space-x-3">
+            {/* Pagination Controls */}
+            <div className="flex items-center text-sm text-slate-500 mr-2 border-r border-slate-200 pr-4 space-x-3">
+                <span className="hidden xl:inline text-xs font-medium">
+                    {totalItems > 0 ? `${startIdx + 1}-${endIdx} of ${totalItems}` : '0'}
+                </span>
+                <div className="flex items-center space-x-1">
+                   <Button variant="ghost" size="icon" className="h-7 w-7" disabled={currentPage <= 1} onClick={() => setCurrentPage(p => p - 1)}>
+                      <ChevronLeft size={16} />
+                   </Button>
+                   <Button variant="ghost" size="icon" className="h-7 w-7" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(p => p + 1)}>
+                      <ChevronRight size={16} />
+                   </Button>
+                </div>
+                <select 
+                  className="bg-transparent border-none text-slate-700 font-medium text-xs focus:ring-0 cursor-pointer outline-none hover:text-indigo-600"
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                >
+                  <option value="20">20 / page</option>
+                  <option value="50">50 / page</option>
+                  <option value="100">100 / page</option>
+                </select>
+            </div>
+
             <Button 
               variant="ghost" 
               size="icon" 
@@ -239,14 +300,14 @@ export const Inbox = () => {
                 <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
                 </div>
-              ) : filteredEmails.length === 0 ? (
+              ) : paginatedEmails.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400">
                   <InboxIcon size={48} className="mb-4 opacity-20" />
                   <p>Folder is empty</p>
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {filteredEmails.map(email => (
+                  {paginatedEmails.map(email => (
                     <div 
                       key={email.id}
                       id={`email-item-${email.id}`}
@@ -302,14 +363,30 @@ export const Inbox = () => {
                           {email.snippet}
                         </p>
 
-                        {/* Escalated Status Below Snippet */}
-                        {email.isEscalated && (
-                          <div className="mt-2">
-                            <span className="inline-flex items-center text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded border border-red-200 font-bold uppercase tracking-wider">
-                              Escalated
-                            </span>
-                          </div>
-                        )}
+                        {/* Status Badges Below Snippet */}
+                        <div className="mt-2 flex flex-wrap gap-2">
+                           {email.isEscalated && (
+                              <span className="inline-flex items-center text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded border border-red-200 font-bold uppercase tracking-wider">
+                                Escalated
+                              </span>
+                           )}
+                           {email.isCompleted && (
+                              <span className="inline-flex items-center text-[10px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded border border-green-200 font-bold uppercase tracking-wider">
+                                Completed
+                              </span>
+                           )}
+                           {email.csat && (
+                              <span 
+                                className={cn(
+                                  "inline-flex items-center text-[10px] px-1.5 py-0.5 rounded border font-bold uppercase tracking-wider cursor-help",
+                                  email.csat.score >= 4 ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                                )}
+                                title={email.csat.comment}
+                              >
+                                CSAT {email.csat.score}
+                              </span>
+                           )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -329,6 +406,7 @@ export const Inbox = () => {
                 onBack={() => setSelectedEmailId(null)} 
                 onDelete={handleDelete}
                 onEscalate={handleEscalate}
+                onComplete={handleComplete}
               />
             </div>
           ) : (
@@ -363,6 +441,13 @@ export const Inbox = () => {
               <kbd className="px-2 py-1 bg-slate-100 rounded text-xs text-slate-500 font-mono">↓</kbd>
             </div>
           </div>
+          <div className="flex items-center justify-between py-2 border-b border-slate-100">
+             <span className="text-slate-600">Previous / Next Page</span>
+             <div className="flex gap-1">
+               <kbd className="px-2 py-1 bg-slate-100 rounded text-xs text-slate-500 font-mono">←</kbd>
+               <kbd className="px-2 py-1 bg-slate-100 rounded text-xs text-slate-500 font-mono">→</kbd>
+             </div>
+           </div>
           <div className="flex items-center justify-between py-2 border-b border-slate-100">
             <span className="text-slate-600">Reply</span>
             <kbd className="px-2 py-1 bg-slate-100 rounded text-xs text-slate-500 font-mono">r</kbd>

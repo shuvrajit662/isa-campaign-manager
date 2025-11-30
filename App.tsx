@@ -1,10 +1,10 @@
+
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { Inbox } from './pages/Inbox/Inbox';
-import { PromptLibrary } from './pages/PromptLibrary/PromptLibrary';
-import { AdminConsole } from './pages/Admin/AdminConsole';
 import { Debugger } from './pages/Debugger/Debugger';
+import { TestExecutions } from './pages/TestExecutions/TestExecutions';
 
 function App() {
   return (
@@ -15,9 +15,8 @@ function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/inbox" replace />} />
             <Route path="/inbox" element={<Inbox />} />
-            <Route path="/prompts" element={<PromptLibrary />} />
-            <Route path="/debugger" element={<Debugger />} />
-            <Route path="/admin" element={<AdminConsole />} />
+            <Route path="/test-executions" element={<TestExecutions />} />
+            <Route path="/debugger/:id" element={<Debugger />} />
           </Routes>
         </main>
       </div>
