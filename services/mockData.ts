@@ -1,4 +1,5 @@
 
+
 import { Campaign, Email, FolderType, Prompt, User, TestExecution } from '../types';
 
 export const MOCK_CAMPAIGNS: Campaign[] = [
@@ -50,7 +51,8 @@ export const MOCK_TEST_EXECUTIONS: TestExecution[] = [
     conversationId: 'AC57bed091a6a4108cf257065048c0c344',
     messageId: 'MG99123847102938',
     executionType: 'Full Trace',
-    timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString()
+    timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+    isTest: true
   },
   {
     id: 'te2',
@@ -59,7 +61,8 @@ export const MOCK_TEST_EXECUTIONS: TestExecution[] = [
     messageId: 'MG1029384756',
     executionType: 'Assistant Run',
     assistantName: 'Escalation Check',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString()
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+    isTest: true
   },
   {
     id: 'te3',
@@ -68,7 +71,8 @@ export const MOCK_TEST_EXECUTIONS: TestExecution[] = [
     messageId: 'MG5566778899',
     executionType: 'Assistant Run',
     assistantName: 'Prompt Builder',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString()
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
+    isTest: true
   },
   {
     id: 'te4',
@@ -76,7 +80,8 @@ export const MOCK_TEST_EXECUTIONS: TestExecution[] = [
     conversationId: 'AC77441122558833669900114477',
     messageId: 'MG2255881144',
     executionType: 'Full Trace',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString()
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+    isTest: true
   },
   {
     id: 'te5',
@@ -85,7 +90,8 @@ export const MOCK_TEST_EXECUTIONS: TestExecution[] = [
     messageId: 'MG3366992255',
     executionType: 'Assistant Run',
     assistantName: 'Sales Manager / Guardrail',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 25).toISOString()
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 25).toISOString(),
+    isTest: true
   },
   {
     id: 'te6',
@@ -93,7 +99,8 @@ export const MOCK_TEST_EXECUTIONS: TestExecution[] = [
     conversationId: 'AC12312312312312312312312312',
     messageId: 'MG9879879879',
     executionType: 'Full Trace',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString()
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+    isTest: true
   },
   {
     id: 'te7',
@@ -102,7 +109,8 @@ export const MOCK_TEST_EXECUTIONS: TestExecution[] = [
     messageId: 'MG6546546546',
     executionType: 'Assistant Run',
     assistantName: 'Core Assistant Helper',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 50).toISOString()
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 50).toISOString(),
+    isTest: true
   },
   {
     id: 'te8',
@@ -110,7 +118,8 @@ export const MOCK_TEST_EXECUTIONS: TestExecution[] = [
     conversationId: 'AC78978978978978978978978978',
     messageId: 'MG3213213213',
     executionType: 'Full Trace',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString()
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
+    isTest: true
   }
 ];
 

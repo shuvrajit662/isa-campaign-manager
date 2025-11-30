@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, History, ChevronLeft, ChevronRight, Play } from 'lucide-react';
@@ -27,7 +28,7 @@ export const TestExecutions = () => {
   };
 
   const handleRowClick = (conversationId: string) => {
-    navigate(`/debugger/${conversationId}`);
+    navigate(`/debugger/${conversationId}`, { state: { isTest: true } });
   };
 
   return (

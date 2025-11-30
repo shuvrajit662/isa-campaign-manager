@@ -65,6 +65,7 @@ export interface TestExecution {
   executionType: 'Full Trace' | 'Assistant Run';
   assistantName?: string;
   timestamp: string;
+  isTest?: boolean;
 }
 
 export enum FolderType {

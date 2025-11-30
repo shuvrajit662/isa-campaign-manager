@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+
+
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Search, ChevronDown, ChevronRight, Terminal, BookOpen, Bot, Clock, Hash, MessageSquare, Play, Loader2 } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, Terminal, BookOpen, Bot, Clock, Hash, MessageSquare, Play, Loader2, Beaker } from 'lucide-react';
 import { Input, Button, Badge, cn } from '../../components/UI';
+import { MOCK_TEST_EXECUTIONS } from '../../services/mockData';
 
 // --- Mock Data for Debugger ---
 
@@ -410,6 +413,12 @@ export const Debugger = () => {
   const [runningTests, setRunningTests] = useState<Set<number>>(new Set());
   const [isSystemRunning, setIsSystemRunning] = useState(false);
 
+  // Determine if this is a test execution based on ID lookup in mock data OR state passed from navigation
+  const isTestExecution = useMemo(() => {
+    if (location.state?.isTest) return true;
+    return MOCK_TEST_EXECUTIONS.some(te => te.conversationId === id && te.isTest);
+  }, [id, location.state]);
+
   const toggleAssistant = (name: string) => {
     setOpenAssistants(prev => ({ ...prev, [name]: !prev[name] }));
   };
@@ -473,7 +482,8 @@ export const Debugger = () => {
       navigate(`/debugger/${newId}`, { 
         state: { 
           assistants: nextAssistants,
-          openAssistants: openAssistants 
+          openAssistants: openAssistants,
+          isTest: true // When running a test, the new view is considered a test result
         } 
       });
       
@@ -495,7 +505,8 @@ export const Debugger = () => {
       navigate(`/debugger/${newId}`, { 
         state: { 
           assistants: nextAssistants,
-          openAssistants: openAssistants 
+          openAssistants: openAssistants,
+          isTest: true // When running the system, the new view is considered a test result
         } 
       });
       
@@ -596,7 +607,14 @@ export const Debugger = () => {
           {/* Output Column */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[600px]">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 rounded-t-xl">
-              <h2 className="font-semibold text-slate-900">Generated Output</h2>
+              <div className="flex items-center gap-3">
+                 <h2 className="font-semibold text-slate-900">Generated Output</h2>
+                 {isTestExecution && (
+                   <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5">
+                     <Beaker size={12} className="mr-1" /> Test
+                   </Badge>
+                 )}
+              </div>
               <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
                 ESCALATED
               </Badge>
