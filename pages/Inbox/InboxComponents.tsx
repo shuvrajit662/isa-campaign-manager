@@ -541,7 +541,7 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onDelet
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [composeMode, isLabelMenuOpen]);
 
-  const threadItems = email.thread || [{
+  const threadItems = (email.thread || [{
     id: email.id,
     sender: email.sender,
     senderEmail: email.senderEmail,
@@ -549,7 +549,10 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onDelet
     body: email.body,
     timestamp: email.timestamp,
     avatarColor: email.avatarColor
-  }];
+  }])
+    // Sort by timestamp descending (newest first, oldest at bottom)
+    .slice()
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   const filteredLabels = MOCK_LABELS.filter(l => l.toLowerCase().includes(labelSearch.toLowerCase()));
 
@@ -731,7 +734,7 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onDelet
                               variant="ghost" 
                               size="sm" 
                               className="h-8 px-2 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700"
-                              onClick={() => navigate(`/debugger/${email.id}`)}
+                              onClick={() => navigate(`/debugger/${email.id}_${item.id}`)}
                               title="Debug this message"
                            >
                               <Bug size={14} className="mr-1.5" /> Debug

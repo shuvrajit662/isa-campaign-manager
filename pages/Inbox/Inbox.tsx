@@ -1,13 +1,14 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Inbox as InboxIcon, Send as SendIcon, File as DraftIcon, Trash2, Tag, Star, ChevronDown, Filter, Keyboard, Command, ChevronLeft, ChevronRight } from 'lucide-react';
-import { MOCK_EMAILS, MOCK_CAMPAIGNS, MOCK_LABELS } from '../../services/mockData';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Search, Inbox as InboxIcon, Send as SendIcon, File as DraftIcon, Trash2, Tag, Star, ChevronDown, Filter, Keyboard, Command, ChevronLeft, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react';
+import { MOCK_CAMPAIGNS, MOCK_LABELS, CAMPAIGN_IDS } from '../../services/mockData';
+import { fetchConversations, transformConversationsToEmails } from '../../services/api';
 import { Email, FolderType } from '../../types';
 import { cn, Button, Modal } from '../../components/UI';
 import { EmailDetail, ComposeModal } from './InboxComponents';
 
 export const Inbox = () => {
-  const [emails, setEmails] = useState<Email[]>(MOCK_EMAILS);
+  const [emails, setEmails] = useState<Email[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<FolderType>(FolderType.INBOX);
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -18,11 +19,56 @@ export const Inbox = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   
-  // Campaign Filter State
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
+  // Campaign Filter State - default to Talk to Sales campaign
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>(CAMPAIGN_IDS.TALK_TO_SALES);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // API pagination state
+  const [apiPageToken, setApiPageToken] = useState<string | undefined>(undefined);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
 
-  // Computed filtered emails (All matches)
+  // Fetch conversations from API
+  const loadConversations = useCallback(async (campaignId: string) => {
+    if (campaignId === 'all') {
+      // For 'all', we'll fetch from Talk to Sales for now
+      campaignId = CAMPAIGN_IDS.TALK_TO_SALES;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetchConversations({
+        campaignId,
+        pageSize: 50, // Fetch more to have data for local filtering
+      });
+      
+      const transformedEmails = transformConversationsToEmails(
+        response.conversations,
+        campaignId
+      );
+      
+      setEmails(transformedEmails);
+      setHasNextPage(response.pagination.hasNextPage);
+      setTotalCount(response.pagination.totalCount);
+      setApiPageToken(response.pagination.nextPageToken);
+    } catch (err) {
+      console.error('Failed to fetch conversations:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load conversations');
+      setEmails([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Load conversations on mount and when campaign changes
+  useEffect(() => {
+    loadConversations(selectedCampaignId);
+  }, [selectedCampaignId, loadConversations]);
+
+  // Computed filtered emails (All matches) - sorted by timestamp descending (latest first)
   const filteredEmails = useMemo(() => {
     return emails
       .filter(e => e.folder === selectedFolder)
@@ -34,7 +80,8 @@ export const Inbox = () => {
         e.subject.toLowerCase().includes(searchQuery.toLowerCase()) || 
         e.sender.toLowerCase().includes(searchQuery.toLowerCase()) ||
         e.snippet.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+      )
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [emails, selectedFolder, searchQuery, selectedCampaignId]);
 
   // Pagination Logic
@@ -116,12 +163,12 @@ export const Inbox = () => {
 
   const handleCampaignChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newId = e.target.value;
-    setIsLoading(true);
-    // Simulate network latency
-    setTimeout(() => {
-      setSelectedCampaignId(newId);
-      setIsLoading(false);
-    }, 600);
+    setSelectedCampaignId(newId);
+    // The useEffect will trigger the API call
+  };
+
+  const handleRefresh = () => {
+    loadConversations(selectedCampaignId);
   };
 
   const handleDelete = (id: string) => {
@@ -260,6 +307,16 @@ export const Inbox = () => {
             <Button 
               variant="ghost" 
               size="icon" 
+              className={cn("text-slate-400 hover:text-slate-600", isLoading && "animate-spin")}
+              onClick={handleRefresh}
+              disabled={isLoading}
+              title="Refresh"
+            >
+              <RefreshCw size={20} />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
               className="text-slate-400 hover:text-slate-600"
               onClick={() => setIsShortcutsOpen(true)}
               title="Keyboard Shortcuts"
@@ -272,8 +329,9 @@ export const Inbox = () => {
               </div>
               <select
                 className="appearance-none bg-white border border-slate-300 text-slate-700 py-2 pl-10 pr-10 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer hover:bg-slate-50 transition-colors shadow-sm"
-                value={isLoading ? selectedCampaignId : selectedCampaignId}
+                value={selectedCampaignId}
                 onChange={handleCampaignChange}
+                disabled={isLoading}
               >
                 <option value="all">All Campaigns</option>
                 {MOCK_CAMPAIGNS.map(campaign => (
@@ -299,6 +357,15 @@ export const Inbox = () => {
               {isLoading ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                </div>
+              ) : error ? (
+                <div className="h-full flex flex-col items-center justify-center text-red-500 p-4">
+                  <AlertCircle size={48} className="mb-4" />
+                  <p className="text-lg font-medium mb-2">Failed to load conversations</p>
+                  <p className="text-sm text-slate-500 mb-4">{error}</p>
+                  <Button onClick={handleRefresh} variant="outline">
+                    Try Again
+                  </Button>
                 </div>
               ) : paginatedEmails.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400">

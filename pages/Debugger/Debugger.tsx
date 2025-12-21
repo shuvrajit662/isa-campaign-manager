@@ -1,10 +1,11 @@
 
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Search, ChevronDown, ChevronRight, Terminal, BookOpen, Bot, Clock, Hash, MessageSquare, Play, Loader2, Beaker } from 'lucide-react';
-import { Input, Button, Badge, cn } from '../../components/UI';
+import { Search, ChevronDown, ChevronRight, Terminal, BookOpen, Bot, Clock, Hash, MessageSquare, Play, Loader2, Beaker, AlertCircle, Maximize2 } from 'lucide-react';
+import { Input, Button, Badge, cn, Modal } from '../../components/UI';
 import { MOCK_TEST_EXECUTIONS } from '../../services/mockData';
+import { fetchConversation, fetchConversationEvents, transformMessagesToDebuggerData, getRelevantMessagesForDebug, extractToolUsages, enrichAssistantsWithConfig, DebuggerAssistant, GuardrailCheck, KnowledgeGroup, ToolUsage } from '../../services/api';
 
 // --- Mock Data for Debugger ---
 
@@ -14,28 +15,16 @@ const TRACE_METADATA = {
   timestamp: new Date().toISOString(),
 };
 
-const MOCK_GUARDRAILS = [
-  { name: 'Sentiment Check', description: 'Ensure the response does not carry negative sentiment.', status: 'passed', score: 0.8 },
-  { name: 'Greeting Check', description: 'Does the email contain a proper greeting?', status: 'passed', score: 1.0 },
-  { name: 'Topic Relevance', description: 'Is the email about Twilio products/services?', status: 'passed', score: 0.98 },
-  { name: 'AI Tone Check', description: 'Does it sound natural and not robotic?', status: 'passed', score: 0.95 },
-  { name: 'Language Check', description: 'Is the response written in English?', status: 'failed', score: 0.0 },
-  { name: 'Scheduling Guardrail', description: 'Does ISA avoid offering personal scheduling?', status: 'passed', score: 1.0 },
-  { name: 'Human Interaction', description: 'Does it correctly handle human handoff requests?', status: 'passed', score: 1.0 },
-  { name: 'Expertise & Scannability', description: 'Is the info comprehensive yet easy to scan?', status: 'passed', score: 0.92 },
-  { name: 'Link Safety', description: 'Are the links relative and safe?', status: 'passed', score: 1.0 },
-  { name: 'Sales Handoff', description: 'Does it instruct to contact Sales when appropriate?', status: 'passed', score: 1.0 },
-];
-
-const MOCK_TOOLS = [
-  { 
-    name: 'Toll-free verification tool', 
-    output: { status: "verified", request_id: "88291", next_step: "carrier_review" } 
-  },
-  { 
-    name: 'Deep research tool', 
-    output: { source: "twilio_internal_kb", relevance: 0.89, summary: "Toll-free verification requires opt-in proof." } 
-  }
+const MOCK_GUARDRAILS: GuardrailCheck[] = [
+  { id: 'hasGreeting', name: 'Has Greeting', description: 'Does the email contain a greeting?', status: true, score: 0.9 },
+  { id: 'isTwilioRelated', name: 'Is Twilio Related', description: 'Is this email about Twilio products or services?', status: true, score: 0.9 },
+  { id: 'notRobotic', name: 'Not Robotic', description: 'Does the email sound natural and human-like?', status: true, score: 0.9 },
+  { id: 'isEnglish', name: 'Is English', description: 'Is this response written in English?', status: true, score: 0.9 },
+  { id: 'noIsaScheduling', name: 'No ISA Scheduling', description: 'Does the email avoid offering ISA to personally schedule?', status: true, score: 0.9 },
+  { id: 'noSynchronousHumanInteraction', name: 'No Synchronous Human Interaction', description: 'Does the email avoid suggesting synchronous calls/demos?', status: true, score: 0.9 },
+  { id: 'comprehensiveValue', name: 'Comprehensive Value', description: 'Does this email provide comprehensive, valuable information?', status: true, score: 0.9 },
+  { id: 'linksRelevant', name: 'Links Relevant', description: 'Are the links relevant to the conversation?', status: true, score: 0.9 },
+  { id: 'isWellFormed', name: 'Is Well Formed', description: 'Is the email professionally formatted?', status: true, score: 0.9 },
 ];
 
 const MOCK_KNOWLEDGE_GROUPS = [
@@ -237,21 +226,19 @@ const ALL_KNOWLEDGE = [
   'Pricing Tiers'
 ];
 
-const MOCK_ASSISTANTS = [
+const MOCK_ASSISTANTS: DebuggerAssistant[] = [
   {
-    name: 'Escalation Check',
+    name: 'isa-escalation-assistant',
     messageId: 'MG48231948230157',
-    prompt: `## CUSTOMER (Lead) ##
+    input: `## CUSTOMER (Lead) ##
 
 Company: [[stetdfjg]]
 Industry: Unknown
 Title: Unknown
 Selected Product: Twilio Products
 First Name: test
-Country: Sweden
-
-## SYSTEM INSTRUCTION ##
-Analyze the input for any signs of frustration, negative sentiment, or explicit requests for escalation. Output a JSON classification.`,
+Country: Sweden`,
+    systemPrompt: `Analyze the input for any signs of frustration, negative sentiment, or explicit requests for escalation. Output a JSON classification.`,
     outputFormat: SCHEMA_ESCALATION,
     output: `{
   "committed_use": {
@@ -282,16 +269,14 @@ Analyze the input for any signs of frustration, negative sentiment, or explicit 
     knowledgeAvailable: ALL_KNOWLEDGE
   },
   {
-    name: 'Prompt Builder',
+    name: 'isa-classification-assistant',
     messageId: 'MG48231948230158',
-    prompt: `## USER INTENT ##
+    input: `## USER INTENT ##
 "Toll-free verification help"
 
 ## CONTEXT ##
-User is encountering error 30513.
-
-## TASK ##
-Construct a system prompt that guides the model to be helpful, concise, and accurate regarding Twilio Toll-Free verification policies.`,
+User is encountering error 30513.`,
+    systemPrompt: `Construct a system prompt that guides the model to be helpful, concise, and accurate regarding Twilio Toll-Free verification policies.`,
     outputFormat: SCHEMA_PROMPT_BUILDER,
     output: `System Prompt:
 "You are an expert Twilio support agent specialized in messaging compliance.
@@ -304,9 +289,10 @@ Do not invent policy details. If unsure, ask for the Case ID."`,
     knowledgeAvailable: ALL_KNOWLEDGE
   },
   {
-    name: 'Core Assistant Helper',
+    name: 'isa-core-helper-assistant',
     messageId: 'MG48231948230159',
-    prompt: `Execute tool: 'Toll-free verification tool' with arguments: { request_id: "88291" }`,
+    input: `Execute tool: 'Toll-free verification tool' with arguments: { request_id: "88291" }`,
+    systemPrompt: `You are a helper assistant that executes tools and returns structured results.`,
     outputFormat: SCHEMA_TOOL_EXEC,
     output: `{
   "status": "success",
@@ -323,15 +309,16 @@ Do not invent policy details. If unsure, ask for the Case ID."`,
     knowledgeAvailable: ALL_KNOWLEDGE
   },
   {
-    name: 'Sales Manager / Guardrail',
+    name: 'isa-guardrail-assistant',
     messageId: 'MG48231948230160',
-    prompt: `## GUARDRAIL CHECK ##
+    input: `## GUARDRAIL CHECK ##
 Analyze the drafted response for sales compliance.
 
 Checklist:
 1. Is pricing mentioned? No.
 2. Is personal scheduling offered? No.
 3. Is tone professional? Yes.`,
+    systemPrompt: `You are a guardrail assistant that validates responses for compliance and quality.`,
     outputFormat: SCHEMA_GUARDRAIL,
     output: `{
   "status": "passed",
@@ -348,11 +335,12 @@ Checklist:
     knowledgeAvailable: ALL_KNOWLEDGE
   },
   {
-    name: 'Conversation Completed',
+    name: 'isa-state-assistant',
     messageId: 'MG48231948230161',
-    prompt: `## STATE UPDATE ##
+    input: `## STATE UPDATE ##
 Mark conversation as 'waiting_user'.
 Log metadata for analytics.`,
+    systemPrompt: `You manage conversation state transitions and metadata logging.`,
     outputFormat: SCHEMA_STATE,
     output: `{
   "conversation_id": "AC57bed091a6a4108cf257065048c0c344",
@@ -366,15 +354,13 @@ Log metadata for analytics.`,
     knowledgeAvailable: ALL_KNOWLEDGE
   },
   {
-    name: 'Final Output',
+    name: 'isa-core-assistant',
     messageId: 'MG48231948230162',
-    prompt: `## GENERATION CONTEXT ##
+    input: `## GENERATION CONTEXT ##
 - User: Sarah
 - Issue: Error 30513 (Unverified Number)
-- Solution: Fix opt-in language in current application.
-
-## INSTRUCTION ##
-Draft a response email using HTML format.`,
+- Solution: Fix opt-in language in current application.`,
+    systemPrompt: `Draft a response email using HTML format. Be helpful and professional.`,
     outputFormat: SCHEMA_FINAL,
     output: `<p>Hi Sarah,</p>
 <p>Thanks for reaching out about the rejection on your Toll-Free verification request. I see you're encountering error <strong>30513</strong>.</p>
@@ -407,26 +393,96 @@ export const Debugger = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const [emailSearch, setEmailSearch] = useState('sarah@skynet.com');
+  
+  // Parse the ID: format is conversationId_messageId
+  const [conversationId, messageId] = useMemo(() => {
+    if (!id) return ['', ''];
+    const parts = id.split('_');
+    if (parts.length >= 2) {
+      // Join all parts except the last one as conversationId (in case it contains underscores)
+      const msgId = parts[parts.length - 1];
+      const convId = parts.slice(0, -1).join('_');
+      return [convId, msgId];
+    }
+    return [id, ''];
+  }, [id]);
+  
+  const [emailSearch, setEmailSearch] = useState('');
   const [openAssistants, setOpenAssistants] = useState<Record<string, boolean>>(location.state?.openAssistants || {});
-  const [assistants, setAssistants] = useState(location.state?.assistants || MOCK_ASSISTANTS);
+  const [assistants, setAssistants] = useState<DebuggerAssistant[]>(location.state?.assistants || MOCK_ASSISTANTS);
+  const [guardrails, setGuardrails] = useState<GuardrailCheck[]>(MOCK_GUARDRAILS);
+  const [guardrailReason, setGuardrailReason] = useState<string>('');
+  const [guardrailScore, setGuardrailScore] = useState<number>(0.9);
+  const [reasonExpanded, setReasonExpanded] = useState(false);
+  const [generatedOutput, setGeneratedOutput] = useState<string>(SAMPLE_EMAIL_BODY);
+  const [knowledgeGroups, setKnowledgeGroups] = useState<KnowledgeGroup[]>(MOCK_KNOWLEDGE_GROUPS.map(g => ({ sourceName: g.name, chunks: g.chunks.map(c => ({ title: '', preview: c })) })));
+  const [expandedChunks, setExpandedChunks] = useState<Record<string, boolean>>({});
+  const [toolUsages, setToolUsages] = useState<ToolUsage[]>([]);
+  const [expandedTools, setExpandedTools] = useState<Record<number, boolean>>({});
+  const [toolModalIndex, setToolModalIndex] = useState<number | null>(null);
+  const [toolModalSection, setToolModalSection] = useState<'input' | 'output' | null>(null);
+  const [assistantModalData, setAssistantModalData] = useState<{ assistantIdx: number; section: 'input' | 'output' | 'outputFormat' | 'prompt' } | null>(null);
   const [runningTests, setRunningTests] = useState<Set<number>>(new Set());
   const [isSystemRunning, setIsSystemRunning] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch conversation data on mount
+  useEffect(() => {
+    if (!conversationId || !messageId) return;
+    if (location.state?.assistants) return; // Skip if we have state from navigation
+    
+    const loadDebugData = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        const conversation = await fetchConversation(conversationId);
+        const debugData = transformMessagesToDebuggerData(conversation, messageId);
+        
+        // Fetch events and extract tool usages
+        const events = await fetchConversationEvents(conversationId);
+        const relevantMessages = getRelevantMessagesForDebug(conversation.messages, messageId);
+        const tools = extractToolUsages(relevantMessages, events);
+        setToolUsages(tools);
+        
+        // Enrich assistants with config data (system prompt, tools available/used, knowledge available)
+        const enrichedAssistants = await enrichAssistantsWithConfig(debugData.assistants, events);
+        
+        setAssistants(enrichedAssistants.length > 0 ? enrichedAssistants : MOCK_ASSISTANTS);
+        setEmailSearch(debugData.userEmail);
+        setGuardrails(debugData.guardrails.length > 0 ? debugData.guardrails : MOCK_GUARDRAILS);
+        setGuardrailReason(debugData.guardrailReason || '');
+        setGuardrailScore(debugData.guardrailScore || 0);
+        setGeneratedOutput(debugData.generatedOutput || SAMPLE_EMAIL_BODY);
+        if (debugData.knowledgeGroups.length > 0) {
+          setKnowledgeGroups(debugData.knowledgeGroups);
+        }
+      } catch (err) {
+        console.error('Failed to load debug data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load debug data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadDebugData();
+  }, [conversationId, messageId, location.state?.assistants]);
 
   // Determine if this is a test execution based on ID lookup in mock data OR state passed from navigation
   const isTestExecution = useMemo(() => {
     if (location.state?.isTest) return true;
-    return MOCK_TEST_EXECUTIONS.some(te => te.conversationId === id && te.isTest);
-  }, [id, location.state]);
+    return MOCK_TEST_EXECUTIONS.some(te => te.conversationId === conversationId && te.isTest);
+  }, [conversationId, location.state]);
 
   const toggleAssistant = (name: string) => {
     setOpenAssistants(prev => ({ ...prev, [name]: !prev[name] }));
   };
 
-  const handlePromptChange = (index: number, value: string) => {
+  const handleInputChange = (index: number, value: string) => {
     setAssistants((prev: any[]) => {
       const next = [...prev];
-      next[index] = { ...next[index], prompt: value };
+      next[index] = { ...next[index], input: value };
       return next;
     });
   };
@@ -514,17 +570,45 @@ export const Debugger = () => {
     }, 3500); // Slightly longer delay for full system run
   };
 
-  const getAssistantsForTool = (toolName: string) => {
-    return assistants.filter((a: any) => a.toolsUsed.includes(toolName)).map((a: any) => a.name);
-  };
-
   const getAssistantsForKnowledge = (groupName: string) => {
     return assistants.filter((a: any) => a.knowledgeUsed.includes(groupName)).map((a: any) => a.name);
   };
 
-  const overallScoreNum = MOCK_GUARDRAILS.reduce((acc, curr) => acc + curr.score, 0) / MOCK_GUARDRAILS.length;
-  const overallScore = overallScoreNum.toFixed(2);
-  const isHighScore = overallScoreNum > 0.85;
+  // Use the guardrailScore from state
+  const overallScore = guardrailScore.toFixed(2);
+  const isHighScore = guardrailScore > 0.85;
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex-1 h-screen overflow-y-auto bg-slate-50 p-6 md:p-8">
+        <div className="max-w-7xl mx-auto flex items-center justify-center h-full">
+          <div className="text-center">
+            <Loader2 size={48} className="animate-spin text-indigo-600 mx-auto mb-4" />
+            <p className="text-slate-600">Loading debug data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex-1 h-screen overflow-y-auto bg-slate-50 p-6 md:p-8">
+        <div className="max-w-7xl mx-auto flex items-center justify-center h-full">
+          <div className="text-center">
+            <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-slate-900 mb-2">Failed to Load</h2>
+            <p className="text-slate-600 mb-4">{error}</p>
+            <Button onClick={() => navigate(-1)} variant="outline">
+              Go Back
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 h-screen overflow-y-auto bg-slate-50 p-6 md:p-8">
@@ -586,12 +670,12 @@ export const Debugger = () => {
               <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
                 <MessageSquare size={14} className="text-indigo-500" />
                 <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Conv</span>
-                <span className="font-mono text-xs text-slate-700 select-all font-medium">{id || TRACE_METADATA.conversationId}</span>
+                <span className="font-mono text-xs text-slate-700 select-all font-medium">{conversationId || TRACE_METADATA.conversationId}</span>
               </div>
               <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
                 <Hash size={14} className="text-indigo-500" />
                 <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Msg</span>
-                <span className="font-mono text-xs text-slate-700 select-all font-medium">{TRACE_METADATA.rootMessageId}</span>
+                <span className="font-mono text-xs text-slate-700 select-all font-medium">{messageId || TRACE_METADATA.rootMessageId}</span>
               </div>
               <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
                 <Clock size={14} className="text-indigo-500" />
@@ -622,7 +706,7 @@ export const Debugger = () => {
             <div className="p-6 overflow-y-auto flex-1 bg-white">
               <div 
                 className="prose prose-slate prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: SAMPLE_EMAIL_BODY }} 
+                dangerouslySetInnerHTML={{ __html: generatedOutput }} 
               />
             </div>
           </div>
@@ -636,22 +720,43 @@ export const Debugger = () => {
                 <span className={cn("text-sm font-bold", isHighScore ? "text-green-600" : "text-orange-600")}>{overallScore}</span>
               </div>
             </div>
+            {guardrailReason && (
+              <div className="border-b border-slate-100 bg-amber-50">
+                <button
+                  onClick={() => setReasonExpanded(!reasonExpanded)}
+                  className="w-full px-6 py-3 flex items-center gap-2 text-left hover:bg-amber-100/50 transition-colors"
+                >
+                  {reasonExpanded ? <ChevronDown size={16} className="text-amber-600" /> : <ChevronRight size={16} className="text-amber-600" />}
+                  <span className="text-xs font-medium text-amber-700 uppercase tracking-wide">Feedback</span>
+                </button>
+                {reasonExpanded && (
+                  <div className="px-6 pb-4">
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{guardrailReason}</p>
+                  </div>
+                )}
+                {!reasonExpanded && (
+                  <div className="px-6 pb-3">
+                    <p className="text-sm text-slate-600 line-clamp-3">{guardrailReason}</p>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="p-0 overflow-y-auto flex-1">
               <div className="divide-y divide-slate-100">
-                {MOCK_GUARDRAILS.map((guard, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+                {guardrails.map((guard, idx) => (
+                  <div key={guard.id || idx} className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
                     <div className="flex-1 pr-4">
                       <p className="text-sm font-semibold text-slate-900">{guard.name}</p>
-                      <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{guard.description}</p>
+                      <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{guard.description}</p>
                     </div>
                     <div className="flex items-center flex-shrink-0">
                       <Badge 
                         className={cn(
                           "uppercase text-[10px] w-16 justify-center", 
-                          guard.status === 'passed' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                          guard.status ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                         )}
                       >
-                        {guard.status}
+                        {guard.status ? 'true' : 'false'}
                       </Badge>
                     </div>
                   </div>
@@ -669,33 +774,73 @@ export const Debugger = () => {
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 rounded-t-xl flex items-center gap-2 flex-shrink-0">
               <Terminal size={18} className="text-slate-500" />
               <h2 className="font-semibold text-slate-900">Tools Used</h2>
+              {toolUsages.length > 0 && (
+                <Badge variant="secondary" className="ml-auto text-xs">{toolUsages.length} tool{toolUsages.length !== 1 ? 's' : ''}</Badge>
+              )}
             </div>
-            <div className="p-6 space-y-6 overflow-y-auto flex-1">
-              {MOCK_TOOLS.map((tool, idx) => {
-                const usedBy = getAssistantsForTool(tool.name);
-                return (
-                <div key={idx} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
-                      <span className="text-sm font-medium text-slate-900">{tool.name}</span>
-                    </div>
-                    {usedBy.length > 0 && (
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {toolUsages.length === 0 ? (
+                <div className="text-sm text-slate-500 text-center py-8">No tools used in this execution</div>
+              ) : (
+                toolUsages.map((tool, idx) => {
+                  const isExpanded = expandedTools[idx];
+                  return (
+                  <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => setExpandedTools(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                      className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+                        <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                        <span className="text-sm font-medium text-slate-900">{tool.toolName}</span>
+                      </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-slate-400 uppercase tracking-wide font-medium">Used By</span>
-                        {usedBy.map((u: any) => (
-                          <Badge key={u} variant="secondary" className="text-[10px] py-0 px-2 h-5">{u}</Badge>
-                        ))}
+                        <Badge variant="secondary" className="text-[10px] py-0 px-2 h-5">{tool.usedBy}</Badge>
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="p-3 space-y-3 border-t border-slate-200">
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Input</p>
+                            <button
+                              onClick={() => { setToolModalIndex(idx); setToolModalSection('input'); }}
+                              className="p-1 hover:bg-slate-200 rounded transition-colors"
+                              title="Expand Input"
+                            >
+                              <Maximize2 size={12} className="text-slate-400" />
+                            </button>
+                          </div>
+                          <div className="bg-slate-900 rounded-lg p-3 overflow-x-auto max-h-48 relative">
+                            <pre className="text-xs text-emerald-300 font-mono whitespace-pre-wrap">
+                              {JSON.stringify(tool.input, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Output</p>
+                            <button
+                              onClick={() => { setToolModalIndex(idx); setToolModalSection('output'); }}
+                              className="p-1 hover:bg-slate-200 rounded transition-colors"
+                              title="Expand Output"
+                            >
+                              <Maximize2 size={12} className="text-slate-400" />
+                            </button>
+                          </div>
+                          <div className="bg-slate-900 rounded-lg p-3 overflow-x-auto max-h-48 relative">
+                            <pre className="text-xs text-indigo-300 font-mono whitespace-pre-wrap">
+                              {typeof tool.output === 'string' ? tool.output : JSON.stringify(tool.output, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
-                  <div className="bg-slate-900 rounded-lg p-3 overflow-x-auto">
-                    <pre className="text-xs text-indigo-300 font-mono">
-                      {JSON.stringify(tool.output, null, 2)}
-                    </pre>
-                  </div>
-                </div>
-              )})}
+                )})
+              )}
             </div>
           </div>
 
@@ -706,12 +851,12 @@ export const Debugger = () => {
               <h2 className="font-semibold text-slate-900">Knowledge Base</h2>
             </div>
             <div className="p-6 space-y-6 overflow-y-auto flex-1">
-              {MOCK_KNOWLEDGE_GROUPS.map((group, groupIdx) => {
-                const usedBy = getAssistantsForKnowledge(group.name);
+              {knowledgeGroups.map((group, groupIdx) => {
+                const usedBy = getAssistantsForKnowledge(group.sourceName);
                 return (
                 <div key={groupIdx} className="space-y-3">
                    <div className="flex items-center justify-between">
-                     <Badge variant="secondary">{group.name}</Badge>
+                     <Badge variant="secondary">{group.sourceName}</Badge>
                      {usedBy.length > 0 && (
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-slate-400 uppercase tracking-wide font-medium">Used By</span>
@@ -721,17 +866,28 @@ export const Debugger = () => {
                       </div>
                     )}
                    </div>
-                   <div className="space-y-3">
-                     {group.chunks.map((chunk, chunkIdx) => (
-                      <div key={chunkIdx} className="flex gap-3">
-                        <span className="text-xs font-bold text-slate-400 mt-1 min-w-[1.5rem]">
-                          {String(chunkIdx + 1).padStart(2, '0')}
-                        </span>
-                        <p className="text-sm text-slate-600 leading-relaxed bg-slate-50 p-2 rounded border border-slate-100 flex-1">
-                          {chunk}
-                        </p>
+                   <div className="space-y-2">
+                     {group.chunks.map((chunk, chunkIdx) => {
+                      const chunkKey = `${groupIdx}-${chunkIdx}`;
+                      const isExpanded = expandedChunks[chunkKey];
+                      return (
+                      <div key={chunkIdx} className="border border-slate-100 rounded bg-slate-50">
+                        <button
+                          onClick={() => setExpandedChunks(prev => ({ ...prev, [chunkKey]: !prev[chunkKey] }))}
+                          className="w-full flex items-start gap-3 p-2 text-left hover:bg-slate-100 transition-colors"
+                        >
+                          {isExpanded ? <ChevronDown size={14} className="text-slate-400 mt-0.5 flex-shrink-0" /> : <ChevronRight size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />}
+                          <div className="flex-1 min-w-0">
+                            {chunk.title && (
+                              <p className="text-xs font-medium text-slate-700 mb-1">{chunk.title}</p>
+                            )}
+                            <p className={cn("text-sm text-slate-600", !isExpanded && "line-clamp-3")}>
+                              {chunk.preview}
+                            </p>
+                          </div>
+                        </button>
                       </div>
-                     ))}
+                     )})}
                    </div>
                 </div>
               )})}
@@ -776,57 +932,104 @@ export const Debugger = () => {
                       {/* Main Trace Grid */}
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                         
-                        {/* Left Column: Input + Format */}
+                        {/* Left Column: Input + Prompt */}
                         <div className="flex flex-col gap-6">
-                            {/* Input / Prompt */}
-                            <div className="flex flex-col h-[300px]">
+                            {/* Input */}
+                            <div className="flex flex-col h-[250px]">
                               <div className="flex items-center justify-between mb-2">
-                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Input / Prompt</p>
-                                <Button 
-                                  size="sm" 
-                                  variant="ghost" 
-                                  className={cn("h-6 px-2", isRunning ? "text-slate-400" : "text-indigo-600 hover:bg-indigo-50")}
-                                  onClick={(e) => { e.stopPropagation(); handleRunTest(idx); }}
-                                  disabled={isRunning || isSystemRunning}
-                                  title="Test this prompt"
-                                >
-                                  {isRunning ? <Loader2 className="animate-spin" size={12} /> : <Play size={12} className="mr-1.5 fill-indigo-600" />} 
-                                  {isRunning ? <span className="ml-1.5">Running...</span> : 'Test'}
-                                </Button>
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Input</p>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setAssistantModalData({ assistantIdx: idx, section: 'input' })}
+                                    className="p-1 hover:bg-slate-200 rounded transition-colors"
+                                    title="Expand Input"
+                                  >
+                                    <Maximize2 size={12} className="text-slate-400" />
+                                  </button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost" 
+                                    className={cn("h-6 px-2", isRunning ? "text-slate-400" : "text-indigo-600 hover:bg-indigo-50")}
+                                    onClick={(e) => { e.stopPropagation(); handleRunTest(idx); }}
+                                    disabled={isRunning || isSystemRunning}
+                                    title="Test this prompt"
+                                  >
+                                    {isRunning ? <Loader2 className="animate-spin" size={12} /> : <Play size={12} className="mr-1.5 fill-indigo-600" />} 
+                                    {isRunning ? <span className="ml-1.5">Running...</span> : 'Test'}
+                                  </Button>
+                                </div>
                               </div>
                               <textarea 
                                 className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-700 font-mono w-full flex-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none leading-relaxed"
-                                value={assistant.prompt}
-                                onChange={(e) => handlePromptChange(idx, e.target.value)}
+                                value={assistant.input}
+                                onChange={(e) => handleInputChange(idx, e.target.value)}
                                 spellCheck={false}
                               />
                             </div>
                             
-                            {/* Output Format */}
-                            <div className="flex flex-col h-[300px]">
-                              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Output Format</p>
-                              <textarea 
-                                className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600 font-mono w-full flex-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none leading-relaxed"
-                                value={assistant.outputFormat}
-                                onChange={(e) => handleOutputFormatChange(idx, e.target.value)}
-                                spellCheck={false}
-                              />
+                            {/* System Prompt */}
+                            <div className="flex flex-col h-[250px]">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Prompt</p>
+                                <button
+                                  onClick={() => setAssistantModalData({ assistantIdx: idx, section: 'prompt' })}
+                                  className="p-1 hover:bg-slate-200 rounded transition-colors"
+                                  title="Expand Prompt"
+                                >
+                                  <Maximize2 size={12} className="text-slate-400" />
+                                </button>
+                              </div>
+                              <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-sm text-amber-900 font-mono overflow-auto flex-1">
+                                <pre className="whitespace-pre-wrap">{assistant.systemPrompt || 'No system prompt configured'}</pre>
+                              </div>
                             </div>
                         </div>
 
-                        {/* Right Column: Output */}
-                        <div className="flex flex-col h-[624px]"> {/* Matches 300+300+24 gap */}
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Output</p>
-                          <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-sm text-indigo-900 font-mono overflow-auto flex-1 relative">
-                            {(isRunning || isSystemRunning) && (
-                              <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-lg">
-                                <div className="flex flex-col items-center gap-2">
-                                  <Loader2 className="animate-spin text-indigo-600" size={24} />
-                                  <span className="text-xs font-medium text-indigo-700">Generating response...</span>
+                        {/* Right Column: Output + Output Format */}
+                        <div className="flex flex-col gap-6">
+                          {/* Output */}
+                          <div className="flex flex-col h-[250px]">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Output</p>
+                              <button
+                                onClick={() => setAssistantModalData({ assistantIdx: idx, section: 'output' })}
+                                className="p-1 hover:bg-slate-200 rounded transition-colors"
+                                title="Expand Output"
+                              >
+                                <Maximize2 size={12} className="text-slate-400" />
+                              </button>
+                            </div>
+                            <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-sm text-indigo-900 font-mono overflow-auto flex-1 relative">
+                              {(isRunning || isSystemRunning) && (
+                                <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-lg">
+                                  <div className="flex flex-col items-center gap-2">
+                                    <Loader2 className="animate-spin text-indigo-600" size={24} />
+                                    <span className="text-xs font-medium text-indigo-700">Generating response...</span>
+                                  </div>
                                 </div>
-                              </div>
-                            )}
-                            <pre className="whitespace-pre-wrap">{assistant.output}</pre>
+                              )}
+                              <pre className="whitespace-pre-wrap">{assistant.output}</pre>
+                            </div>
+                          </div>
+                          
+                          {/* Output Format */}
+                          <div className="flex flex-col h-[250px]">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Output Format</p>
+                              <button
+                                onClick={() => setAssistantModalData({ assistantIdx: idx, section: 'outputFormat' })}
+                                className="p-1 hover:bg-slate-200 rounded transition-colors"
+                                title="Expand Output Format"
+                              >
+                                <Maximize2 size={12} className="text-slate-400" />
+                              </button>
+                            </div>
+                            <textarea 
+                              className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600 font-mono w-full flex-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none leading-relaxed"
+                              value={assistant.outputFormat}
+                              onChange={(e) => handleOutputFormatChange(idx, e.target.value)}
+                              spellCheck={false}
+                            />
                           </div>
                         </div>
                       </div>
@@ -886,7 +1089,7 @@ export const Debugger = () => {
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Used</p>
                                 {assistant.knowledgeUsed && assistant.knowledgeUsed.length > 0 ? (
                                     <div className="flex flex-wrap gap-2">
-                                      {assistant.knowledgeUsed.map((k: string) => (
+                                      {(Array.from(new Set(assistant.knowledgeUsed)) as string[]).map((k) => (
                                         <Badge key={k} variant="secondary" className="bg-slate-100 text-slate-700 py-1 px-2">
                                           <BookOpen size={12} className="mr-1.5" /> {k}
                                         </Badge>
@@ -909,6 +1112,95 @@ export const Debugger = () => {
         </div>
 
       </div>
+
+      {/* Tool Details Modal */}
+      <Modal 
+        isOpen={toolModalIndex !== null} 
+        onClose={() => { setToolModalIndex(null); setToolModalSection(null); }}
+        title={toolModalIndex !== null 
+          ? `${toolUsages[toolModalIndex]?.toolName}${toolModalSection ? ` - ${toolModalSection.charAt(0).toUpperCase() + toolModalSection.slice(1)}` : ''}`
+          : ''}
+        className="max-w-3xl"
+      >
+        {toolModalIndex !== null && toolUsages[toolModalIndex] && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 uppercase tracking-wide font-medium">Used By</span>
+              <Badge variant="secondary" className="text-xs">{toolUsages[toolModalIndex].usedBy}</Badge>
+            </div>
+            {(toolModalSection === null || toolModalSection === 'input') && (
+              <div>
+                <p className="text-sm font-medium text-slate-700 mb-2">Input</p>
+                <div className="bg-slate-900 rounded-lg p-4 overflow-auto max-h-[60vh]">
+                  <pre className="text-sm text-emerald-300 font-mono whitespace-pre-wrap">
+                    {JSON.stringify(toolUsages[toolModalIndex].input, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+            {(toolModalSection === null || toolModalSection === 'output') && (
+              <div>
+                <p className="text-sm font-medium text-slate-700 mb-2">Output</p>
+                <div className="bg-slate-900 rounded-lg p-4 overflow-auto max-h-[60vh]">
+                  <pre className="text-sm text-indigo-300 font-mono whitespace-pre-wrap">
+                    {typeof toolUsages[toolModalIndex].output === 'string' 
+                      ? toolUsages[toolModalIndex].output 
+                      : JSON.stringify(toolUsages[toolModalIndex].output, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Assistant Section Modal */}
+      <Modal 
+        isOpen={assistantModalData !== null} 
+        onClose={() => setAssistantModalData(null)}
+        title={assistantModalData !== null 
+          ? `${assistants[assistantModalData.assistantIdx]?.name} - ${
+              assistantModalData.section === 'input' ? 'Input' :
+              assistantModalData.section === 'output' ? 'Output' :
+              assistantModalData.section === 'outputFormat' ? 'Output Format' :
+              'Prompt'
+            }`
+          : ''}
+        className="max-w-4xl"
+      >
+        {assistantModalData !== null && assistants[assistantModalData.assistantIdx] && (
+          <div className="space-y-4">
+            {assistantModalData.section === 'input' && (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 overflow-auto max-h-[70vh]">
+                <pre className="text-sm text-slate-700 font-mono whitespace-pre-wrap">
+                  {assistants[assistantModalData.assistantIdx].input}
+                </pre>
+              </div>
+            )}
+            {assistantModalData.section === 'output' && (
+              <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 overflow-auto max-h-[70vh]">
+                <pre className="text-sm text-indigo-900 font-mono whitespace-pre-wrap">
+                  {assistants[assistantModalData.assistantIdx].output}
+                </pre>
+              </div>
+            )}
+            {assistantModalData.section === 'outputFormat' && (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 overflow-auto max-h-[70vh]">
+                <pre className="text-xs text-slate-600 font-mono whitespace-pre-wrap">
+                  {assistants[assistantModalData.assistantIdx].outputFormat}
+                </pre>
+              </div>
+            )}
+            {assistantModalData.section === 'prompt' && (
+              <div className="bg-amber-50 border border-amber-100 rounded-lg p-4 overflow-auto max-h-[70vh]">
+                <pre className="text-sm text-amber-900 font-mono whitespace-pre-wrap">
+                  {assistants[assistantModalData.assistantIdx].systemPrompt || 'No system prompt configured'}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

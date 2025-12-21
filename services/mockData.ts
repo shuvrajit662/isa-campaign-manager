@@ -2,11 +2,13 @@
 
 import { Campaign, Email, FolderType, Prompt, User, TestExecution } from '../types';
 
+// Campaign IDs from the backend
+export const CAMPAIGN_IDS = {
+  TALK_TO_SALES: '00QWB00000DIxQL2A1',
+} as const;
+
 export const MOCK_CAMPAIGNS: Campaign[] = [
-  { id: 'c1', name: 'Talk to Sales', status: 'active' },
-  { id: 'c2', name: 'Rapid Risers', status: 'active' },
-  { id: 'c3', name: 'Toll-free verification', status: 'paused' },
-  { id: 'c4', name: '10dlc', status: 'completed' },
+  { id: CAMPAIGN_IDS.TALK_TO_SALES, name: 'Talk to Sales', status: 'active' },
 ];
 
 export const MOCK_USERS: User[] = [
