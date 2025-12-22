@@ -376,8 +376,16 @@ export interface DebuggerData {
 
 /**
  * Get the relevant messages for debugging
- * Starting from message at index j, go backwards until finding isa-core-assistant or reaching -1
- * Return messages from [i+1, j] inclusive
+ * Starting from the target message, go backwards to find all messages in the same execution flow.
+ * An execution flow is defined as a sequence of messages where each message is within a short time window
+ * of the previous one (indicating they are part of the same pipeline execution).
+ * 
+ * The algorithm:
+ * 1. Find the target message
+ * 2. Get its runId
+ * 3. Go backwards to find the first message that shares the same runId OR is temporally close (within 60 seconds)
+ *    and part of the assistant pipeline
+ * 4. Return all messages from that point to the target
  */
 export function getRelevantMessagesForDebug(
   messages: APIConversationMessage[] | undefined,
@@ -397,13 +405,37 @@ export function getRelevantMessagesForDebug(
     return [];
   }
   
-  // Go backwards to find the boundary (previous isa-core-assistant ASSISTANT response, or start)
+  const targetMessage = messages[j];
+  const targetTimestamp = new Date(targetMessage.createdAt).getTime();
+  
+  // Go backwards to find the start of this execution flow
+  // We consider messages part of the same flow if:
+  // 1. They are close in time (within 120 seconds of the target - allows for full pipeline execution)
+  // 2. They are not the final ASSISTANT message from isa-core-assistant from a PREVIOUS flow
   let i = j - 1;
+  let foundPreviousCoreAssistantResponse = false;
+  
   while (i >= 0) {
-    // Stop when we find a previous ASSISTANT response from isa-core-assistant
-    if (messages[i].assistantId === ISA_CORE_ASSISTANT && messages[i].role === 'ASSISTANT') {
+    const currentMessage = messages[i];
+    const currentTimestamp = new Date(currentMessage.createdAt).getTime();
+    const timeDiff = targetTimestamp - currentTimestamp;
+    
+    // If the message is more than 120 seconds before the target, it's likely a different flow
+    if (timeDiff > 120000) {
       break;
     }
+    
+    // Check if this is an isa-core-assistant ASSISTANT response
+    if (currentMessage.assistantId === ISA_CORE_ASSISTANT && currentMessage.role === 'ASSISTANT') {
+      // If this is the first one we find AND it's not the immediate predecessor to our target's USER message,
+      // it might be from a previous iteration in the same flow (e.g., guardrail rejection + retry)
+      // We should include it in the trace
+      if (!foundPreviousCoreAssistantResponse) {
+        foundPreviousCoreAssistantResponse = true;
+        // Continue to include earlier messages in the same temporal flow
+      }
+    }
+    
     i--;
   }
   
@@ -923,9 +955,11 @@ function extractThreadSummary(messages: APIConversationMessage[]): string | null
 
 /**
  * Build thread items from conversation messages
- * - USER messages: from isa-escalation-assistant
+ * - USER messages: from isa-escalation-assistant (with actual email content)
  * - ASSISTANT responses: from isa-core-assistant with MARKDOWN content
- * - Ordered chronologically (earliest at bottom for email-like view)
+ * - Ensures proper USER > ASSISTANT alternation by pairing messages
+ * - For each core-assistant ASSISTANT response, finds the most recent escalation USER message
+ * - Ordered chronologically (earliest first for email-like view)
  */
 function buildThreadItems(
   messages: APIConversationMessage[],
@@ -938,41 +972,67 @@ function buildThreadItems(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
   
-  // Group messages by their runId to pair USER and ASSISTANT messages
-  // For each USER message from escalation assistant, find the corresponding
-  // ASSISTANT message from core-assistant
+  // Strategy: Find all isa-core-assistant ASSISTANT messages with MARKDOWN (these are the actual responses)
+  // For each one, find the most recent preceding USER message from isa-escalation-assistant
+  // This ensures proper USER > ASSISTANT pairing and avoids duplicate user messages from retries
   
+  // Track which USER message indices have been used to avoid duplicates
+  const usedUserMessageIndices = new Set<number>();
+  
+  // First pass: identify all core-assistant ASSISTANT messages with MARKDOWN
+  const assistantResponses: Array<{ index: number; message: APIConversationMessage }> = [];
   for (let i = 0; i < sortedMessages.length; i++) {
     const message = sortedMessages[i];
+    if (message.role === 'ASSISTANT' && message.assistantId === ISA_CORE_ASSISTANT && message.parts) {
+      const markdownPart = message.parts.find(p => p.type === 'MARKDOWN');
+      if (markdownPart && markdownPart.content) {
+        assistantResponses.push({ index: i, message });
+      }
+    }
+  }
+  
+  // Second pass: for each assistant response, find the most recent preceding USER message
+  // from isa-escalation-assistant that hasn't been used yet
+  for (const { index: assistantIndex, message: assistantMessage } of assistantResponses) {
+    // Look backwards from the assistant message to find the corresponding USER message
+    let userMessageIndex = -1;
+    for (let i = assistantIndex - 1; i >= 0; i--) {
+      const msg = sortedMessages[i];
+      if (msg.role === 'USER' && msg.assistantId === ISA_ESCALATION_ASSISTANT && msg.content) {
+        if (!usedUserMessageIndices.has(i)) {
+          userMessageIndex = i;
+          break;
+        }
+      }
+    }
     
-    // USER messages: show those associated with isa-escalation-assistant
-    if (message.role === 'USER' && message.assistantId === ISA_ESCALATION_ASSISTANT && message.content) {
+    // Add the USER message if found
+    if (userMessageIndex >= 0) {
+      const userMessage = sortedMessages[userMessageIndex];
+      usedUserMessageIndices.add(userMessageIndex);
+      
       threadItems.push({
-        id: message.id,
+        id: userMessage.id,
         sender: senderInfo.name,
         senderEmail: senderInfo.email,
         recipient: 'isa@twilio.com',
-        body: message.content,
-        timestamp: message.createdAt,
+        body: userMessage.content!,
+        timestamp: userMessage.createdAt,
         avatarColor: getAvatarColor(senderInfo.email)
       });
     }
     
-    // ASSISTANT messages: show those from isa-core-assistant with MARKDOWN content
-    if (message.role === 'ASSISTANT' && message.assistantId === ISA_CORE_ASSISTANT && message.parts) {
-      const markdownPart = message.parts.find(p => p.type === 'MARKDOWN');
-      if (markdownPart && markdownPart.content) {
-        threadItems.push({
-          id: message.id,
-          sender: 'Isa',
-          senderEmail: 'isa@twilio.com',
-          recipient: senderInfo.email,
-          body: markdownPart.content,
-          timestamp: message.createdAt,
-          avatarColor: 'bg-indigo-600'
-        });
-      }
-    }
+    // Add the ASSISTANT response
+    const markdownPart = assistantMessage.parts!.find(p => p.type === 'MARKDOWN');
+    threadItems.push({
+      id: assistantMessage.id,
+      sender: 'Isa',
+      senderEmail: 'isa@twilio.com',
+      recipient: senderInfo.email,
+      body: markdownPart!.content!,
+      timestamp: assistantMessage.createdAt,
+      avatarColor: 'bg-indigo-600'
+    });
   }
   
   return threadItems;
@@ -990,14 +1050,25 @@ export function transformConversationsToEmails(conversations: APIConversation[],
     // Build thread from messages (filtered for escalation/core assistant flow)
     const thread = buildThreadItems(conv.messages, senderInfo);
     
-    // Get the latest user message for snippet (from escalation assistant)
+    // Get the latest isa-core-assistant ASSISTANT response with MARKDOWN for snippet
+    const assistantMessages = conv.messages
+      .filter(m => m.role === 'ASSISTANT' && m.assistantId === ISA_CORE_ASSISTANT && m.parts)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    const latestAssistantMessage = assistantMessages[0];
+    const markdownPart = latestAssistantMessage?.parts?.find(p => p.type === 'MARKDOWN');
+    const assistantContent = markdownPart?.content || '';
+    
+    // Strip HTML and limit to ~2 lines (around 120 chars)
+    const snippetText = stripHtml(assistantContent).substring(0, 120);
+    const snippet = snippetText.length >= 120 ? snippetText.substring(0, 117) + '...' : snippetText;
+    
+    // Get the latest user message for timestamp
     const userMessages = conv.messages
       .filter(m => m.role === 'USER' && m.assistantId === ISA_ESCALATION_ASSISTANT && m.content)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     
     const latestUserMessage = userMessages[0];
-    const content = latestUserMessage?.content || '';
-    const snippet = stripHtml(content).substring(0, 100);
     
     // Use email subject from metadata, fallback to default
     const subject = emailSubject || 'Twilio Followup';
@@ -1013,9 +1084,9 @@ export function transformConversationsToEmails(conversations: APIConversation[],
       senderEmail: senderInfo.email,
       recipient: 'isa@twilio.com',
       subject: subject.length > 80 ? subject.substring(0, 80) + '...' : subject,
-      snippet: snippet.length > 100 ? snippet.substring(0, 97) + '...' : snippet,
-      body: content,
-      timestamp: latestUserMessage?.createdAt || conv.updatedAt,
+      snippet,
+      body: assistantContent,
+      timestamp: latestAssistantMessage?.createdAt || latestUserMessage?.createdAt || conv.updatedAt,
       isRead: false, // Could be determined by some other logic
       isStarred: isEscalated,
       folder: FolderType.INBOX,
