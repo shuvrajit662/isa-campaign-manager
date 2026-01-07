@@ -1099,3 +1099,60 @@ export function transformConversationsToEmails(conversations: APIConversation[],
     };
   });
 }
+
+// --- Prompts API ---
+
+import { PromptsResponse, APIPrompt } from '../types';
+
+export interface FetchPromptsParams {
+  offset?: number;
+  limit?: number;
+}
+
+/**
+ * Fetch prompts with pagination
+ */
+export async function fetchPrompts(params: FetchPromptsParams = {}): Promise<PromptsResponse> {
+  const { offset = 0, limit = 10 } = params;
+  
+  const queryParams = new URLSearchParams();
+  queryParams.set('offset', offset.toString());
+  queryParams.set('limit', limit.toString());
+
+  const url = `${BACKEND_URL}/v2/prompts?${queryParams.toString()}`;
+  
+  const response = await fetch(url);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch prompts: ${response.statusText}`);
+  }
+  
+  return response.json();
+}
+
+export interface UpdatePromptParams {
+  description?: string;
+  template?: string;
+}
+
+/**
+ * Update a prompt
+ */
+export async function updatePrompt(promptId: string, params: UpdatePromptParams): Promise<APIPrompt> {
+  const url = `${BACKEND_URL}/v2/prompts/${promptId}`;
+  
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to update prompt: ${response.statusText}`);
+  }
+  
+  return response.json();
+}
+

@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { Inbox } from './pages/Inbox/Inbox';
 import { Debugger } from './pages/Debugger/Debugger';
 import { TestExecutions } from './pages/TestExecutions/TestExecutions';
+import { Prompts } from './pages/Prompts/Prompts';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/inbox" replace />} />
             <Route path="/inbox" element={<Inbox />} />
+            <Route path="/prompts" element={<Prompts />} />
             <Route path="/test-executions" element={<TestExecutions />} />
             <Route path="/debugger/:id" element={<Debugger />} />
           </Routes>

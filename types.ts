@@ -57,6 +57,41 @@ export interface Prompt {
   lastEdited: string;
 }
 
+// API Prompt types
+export interface PromptTag {
+  id: string;
+  name: string;
+  color?: string;
+}
+
+export interface APIPrompt {
+  id: string;
+  type: string;
+  name: string;
+  description: string;
+  template: string;
+  tags: PromptTag[];
+  createdAt?: string;
+  updatedAt?: string;
+  version?: number;
+  isActive?: boolean;
+}
+
+export interface PromptsResponse {
+  prompts: APIPrompt[];
+  page?: {
+    total?: number;
+    offset?: number;
+    limit?: number;
+  };
+  pagination?: {
+    total?: number;
+    offset?: number;
+    limit?: number;
+    hasMore?: boolean;
+  };
+}
+
 export interface TestExecution {
   id: string;
   email: string;
