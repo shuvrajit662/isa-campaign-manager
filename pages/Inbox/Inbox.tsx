@@ -5,7 +5,6 @@ import { fetchConversations, transformConversationsToEmails } from '../../servic
 import { Email, FolderType } from '../../types';
 import { cn } from '../../components/UI';
 
-import { InboxSidebar } from './components/InboxSidebar';
 import { InboxHeader } from './components/InboxHeader';
 import { EmailList } from './components/EmailList';
 import { ShortcutsModal } from './components/ShortcutsModal';
@@ -13,7 +12,7 @@ import { EmailDetail, ComposeModal } from './InboxComponents';
 
 export const Inbox = () => {
   const [emails, setEmails] = useState<Email[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState<FolderType>(FolderType.INBOX);
+  const [selectedTab, setSelectedTab] = useState<'all' | 'draft'>('all');
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isComposeOpen, setIsComposeOpen] = useState(false);
@@ -72,7 +71,12 @@ export const Inbox = () => {
   // Computed filtered emails - sorted by timestamp descending (latest first)
   const filteredEmails = useMemo(() => {
     return emails
-      .filter(e => e.folder === selectedFolder)
+      .filter(e => {
+        if (selectedTab === 'draft') {
+          return e.folder === FolderType.DRAFTS;
+        }
+        return true; // 'all' shows everything
+      })
       .filter(e => {
         if (selectedCampaignId === 'all') return true;
         return e.campaignId === selectedCampaignId;
@@ -83,7 +87,7 @@ export const Inbox = () => {
         e.snippet.toLowerCase().includes(searchQuery.toLowerCase())
       )
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [emails, selectedFolder, searchQuery, selectedCampaignId]);
+  }, [emails, selectedTab, searchQuery, selectedCampaignId]);
 
   // Pagination Logic
   const totalItems = filteredEmails.length;
@@ -102,7 +106,7 @@ export const Inbox = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedFolder, searchQuery, selectedCampaignId, pageSize]);
+  }, [selectedTab, searchQuery, selectedCampaignId, pageSize]);
 
   // Default Selection Effect
   useEffect(() => {
@@ -154,11 +158,6 @@ export const Inbox = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [paginatedEmails, selectedEmailId, isComposeOpen, isShortcutsOpen, currentPage, totalPages]);
 
-  const handleFolderChange = (type: FolderType) => {
-    setSelectedFolder(type);
-    setSelectedEmailId(null);
-  };
-
   const handleCampaignChange = (newId: string) => {
     setSelectedCampaignId(newId);
   };
@@ -169,7 +168,6 @@ export const Inbox = () => {
 
   const handleSelectEmail = (email: Email) => {
     setSelectedEmailId(email.id);
-    setEmails(prev => prev.map(e => e.id === email.id ? { ...e, isRead: true } : e));
   };
 
   const handleDelete = (id: string) => {
@@ -207,21 +205,13 @@ export const Inbox = () => {
 
   return (
     <div className="flex flex-1 h-screen overflow-hidden bg-white">
-      {/* Inbox Sidebar (Folders) */}
-      <InboxSidebar
-        selectedFolder={selectedFolder}
-        onFolderChange={handleFolderChange}
-        onComposeClick={() => setIsComposeOpen(true)}
-        emails={emails}
-      />
-
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header / Filter Bar */}
         <InboxHeader
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          selectedFolder={selectedFolder}
+          selectedFolder={FolderType.INBOX}
           currentPage={currentPage}
           totalPages={totalPages}
           totalItems={totalItems}
@@ -243,17 +233,46 @@ export const Inbox = () => {
           {/* Email List */}
           {(!selectedEmailId || window.innerWidth > 1024) && (
             <div className={cn(
-              "flex-1 overflow-y-auto bg-white relative",
-              selectedEmailId ? "hidden lg:block lg:w-2/5 lg:flex-none border-r border-slate-200" : "w-full"
+              "flex flex-col bg-white relative",
+              selectedEmailId ? "hidden lg:flex lg:w-2/5 lg:flex-none border-r border-slate-200" : "w-full"
             )}>
-              <EmailList
-                emails={paginatedEmails}
-                selectedEmailId={selectedEmailId}
-                onSelectEmail={handleSelectEmail}
-                isLoading={isLoading}
-                error={error}
-                onRetry={handleRefresh}
-              />
+              {/* Tabs */}
+              <div className="flex items-center gap-1 px-6 py-4 border-b border-slate-100 flex-shrink-0">
+                <button
+                  onClick={() => setSelectedTab('all')}
+                  className={cn(
+                    "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
+                    selectedTab === 'all'
+                      ? "bg-indigo-100 text-indigo-700"
+                      : "text-slate-600 hover:bg-slate-100"
+                  )}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setSelectedTab('draft')}
+                  className={cn(
+                    "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
+                    selectedTab === 'draft'
+                      ? "bg-indigo-100 text-indigo-700"
+                      : "text-slate-600 hover:bg-slate-100"
+                  )}
+                >
+                  Draft
+                </button>
+              </div>
+              
+              {/* Email List Content */}
+              <div className="flex-1 overflow-y-auto">
+                <EmailList
+                  emails={paginatedEmails}
+                  selectedEmailId={selectedEmailId}
+                  onSelectEmail={handleSelectEmail}
+                  isLoading={isLoading}
+                  error={error}
+                  onRetry={handleRefresh}
+                />
+              </div>
             </div>
           )}
 
