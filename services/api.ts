@@ -262,84 +262,93 @@ export interface DebuggerAssistant {
   knowledgeAvailable: string[];
 }
 
+export type GuardrailStatus = 'pass' | 'fail' | 'not_applicable' | boolean;
+
 export interface GuardrailCheck {
   id: string;
   name: string;
   description: string;
-  status: boolean;
+  status: GuardrailStatus;
   score?: number;
   reason?: string;
+  reasoning?: string; // For isRobotic field
 }
 
 // Hardcoded guardrail definitions
 const GUARDRAIL_DEFINITIONS: Record<string, { name: string; description: string }> = {
-  allowed: {
-    name: 'Allowed',
-    description: 'Indicates whether the message/action is allowed to proceed.'
+  // DSR-specific checks
+  dsrIntro: {
+    name: 'DSR Introduction',
+    description: 'Does this DSR introduction email start with a brief introduction of the colleague (2-3 sentences)?'
   },
-  reason: {
-    name: 'Reason',
-    description: 'Provides a reason for the decision, especially if not allowed.'
+  dsrNoPricing: {
+    name: 'DSR No Pricing',
+    description: 'Does this DSR introduction email avoid mentioning pricing, costs, or pricing plans?'
   },
-  score: {
-    name: 'Sales Manager Score',
-    description: 'The sales manager score (0.0-1.0) evaluating the overall quality of the email response.'
+  dsrNoResources: {
+    name: 'DSR No Resources',
+    description: 'Does this DSR introduction email avoid sharing documentation links, partner information, or other resources?'
   },
   dsrCsatInclusion: {
     name: 'DSR CSAT Inclusion',
     description: 'Does this DSR introduction email include a customer satisfaction survey request?'
   },
-  notRobotic: {
+  // Content quality checks
+  isRobotic: {
     name: 'Not Robotic',
     description: 'Does the email sound natural and human-like, not robotic or artificial?'
   },
-  csatSurveyInclusion: {
-    name: 'CSAT Survey Inclusion',
-    description: 'Does this response include a customer satisfaction survey request with a survey link?'
-  },
-  isEnglish: {
-    name: 'Is English',
-    description: 'Is this response written in English?'
+  speakToHuman: {
+    name: 'Speak To Human',
+    description: 'Does the email avoid suggesting ISA speaking with a human or escalating to a human agent?'
   },
   comprehensiveValue: {
     name: 'Comprehensive Value',
-    description: 'Does this email provide comprehensive, valuable information that is easy to scan?'
+    description: 'Does this email provide comprehensive, valuable information that demonstrates expertise while being easy to scan?'
   },
-  dsrNoPricing: {
-    name: 'DSR No Pricing',
-    description: 'Does this DSR introduction email avoid mentioning pricing or costs?'
-  },
-  noSynchronousHumanInteraction: {
+  synchronousHumanInteraction: {
     name: 'No Synchronous Human Interaction',
-    description: 'Does the email avoid suggesting ISA schedule synchronous calls/demos/meetings?'
+    description: 'Does the email avoid suggesting ISA scheduling synchronous calls/demos/meetings?'
   },
+  isaScheduling: {
+    name: 'No ISA Scheduling',
+    description: 'Does the email avoid offering ISA to personally schedule, arrange, or set up calls/demos/meetings?'
+  },
+  // Language checks
+  preferredLanguage: {
+    name: 'Preferred Language',
+    description: 'The customer\'s preferred language for communication.'
+  },
+  isPreferredLanguageUsed: {
+    name: 'Preferred Language Used',
+    description: 'Is the email response written in the customer\'s preferred language?'
+  },
+  // Twilio relevance
   isTwilioRelated: {
     name: 'Is Twilio Related',
     description: 'Is this email about Twilio products, services, or helping with Twilio-related questions?'
   },
+  // Formatting checks
   hasGreeting: {
     name: 'Has Greeting',
     description: 'Does the email contain a greeting (e.g., Hi There, Hello [Name])?'
   },
   isWellFormed: {
     name: 'Is Well Formed',
-    description: 'Is the email professionally formatted with proper HTML structure and readability?'
+    description: 'Is the email professionally formatted with proper HTML structure, paragraphs, and readability?'
   },
   linksRelevant: {
     name: 'Links Relevant',
-    description: 'Are the links in the email relevant to the conversation, or are there no links?'
+    description: 'Are the links in the email relevant to the conversation, or are there no links present?'
   },
-  noIsaScheduling: {
-    name: 'No ISA Scheduling',
-    description: 'Does the email avoid offering ISA to personally schedule calls/demos/meetings?'
+  htmlFormattingCompliant: {
+    name: 'HTML Formatting',
+    description: 'Is the email content properly wrapped in <div> tags and using consistent formatting?'
   },
-  dsrIntro: {
-    name: 'DSR Introduction',
-    description: 'Does this DSR introduction email start with a brief introduction of the colleague?'
-  },
-  dsrNoResources: {
-    name: 'DSR No Resources',
-    description: 'Does this DSR introduction email avoid sharing documentation links or partner info?'
+  // Link validation
+  brokenLinks: {
+    name: 'Broken Links',
+    description: 'List of broken URLs found in the email response.'
   }
 };
 
@@ -362,6 +371,8 @@ export interface ToolUsage {
   output: string | Record<string, unknown>;
 }
 
+export type ConversationStatus = 'RESPOND' | 'FOLLOW_UP' | 'ESCALATE' | 'ESCALATED' | 'COMPLETE';
+
 export interface DebuggerData {
   conversationId: string;
   messageId: string;
@@ -372,6 +383,7 @@ export interface DebuggerData {
   guardrailScore: number;
   generatedOutput: string;
   knowledgeGroups: KnowledgeGroup[];
+  conversationStatus: ConversationStatus | null;
 }
 
 /**
@@ -532,6 +544,9 @@ export function transformMessagesToDebuggerData(
   // Extract knowledge groups from all messages
   const knowledgeGroups = extractKnowledgeGroups(relevantMessages);
   
+  // Extract conversation status from metadata
+  const conversationStatus = (conversation.metadata?.isa?.status as ConversationStatus) || null;
+  
   return {
     conversationId: conversation.id,
     messageId,
@@ -541,7 +556,8 @@ export function transformMessagesToDebuggerData(
     guardrailReason: guardrailsData.reason,
     guardrailScore: guardrailsData.score,
     generatedOutput,
-    knowledgeGroups
+    knowledgeGroups,
+    conversationStatus
   };
 }
 
@@ -781,21 +797,42 @@ function extractGuardrailsData(messages: APIConversationMessage[]): {
             mainReason = outputData.reason;
           }
           
-          // Second pass: extract boolean guardrail checks
+          // Second pass: extract guardrail checks (supporting boolean, string status, and object types)
           for (const [key, value] of Object.entries(outputData)) {
-            // Skip non-boolean fields (score, reason, allowed are handled separately or skipped)
-            if (key === 'score' || key === 'reason') continue;
+            // Skip metadata fields
+            if (key === 'score' || key === 'reason' || key === 'preferredLanguage' || key === 'brokenLinks') continue;
             
             // Get the definition for this guardrail
             const definition = GUARDRAIL_DEFINITIONS[key];
             if (!definition) continue; // Skip unknown fields
             
-            if (typeof value === 'boolean') {
+            // Handle isRobotic which is an object with status and reasoning
+            if (key === 'isRobotic' && typeof value === 'object' && value !== null) {
+              const roboticData = value as { status?: string; reasoning?: string };
               guardrails.push({
                 id: key,
                 name: definition.name,
                 description: definition.description,
-                status: value
+                status: roboticData.status === 'pass' ? 'pass' : roboticData.status === 'fail' ? 'fail' : 'fail',
+                reasoning: roboticData.reasoning
+              });
+            }
+            // Handle string status values (pass/fail/not_applicable)
+            else if (typeof value === 'string' && ['pass', 'fail', 'not_applicable'].includes(value)) {
+              guardrails.push({
+                id: key,
+                name: definition.name,
+                description: definition.description,
+                status: value as 'pass' | 'fail' | 'not_applicable'
+              });
+            }
+            // Handle boolean values (legacy support)
+            else if (typeof value === 'boolean') {
+              guardrails.push({
+                id: key,
+                name: definition.name,
+                description: definition.description,
+                status: value ? 'pass' : 'fail'
               });
             }
           }

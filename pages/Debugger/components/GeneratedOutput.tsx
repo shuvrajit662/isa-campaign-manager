@@ -1,13 +1,26 @@
 import React from 'react';
 import { Beaker } from 'lucide-react';
-import { Badge } from '../../../components/UI';
+import { Badge, cn } from '../../../components/UI';
+import { ConversationStatus } from '../../../services/api';
 
 interface GeneratedOutputProps {
   content: string;
   isTestExecution: boolean;
+  status?: ConversationStatus | null;
 }
 
-export const GeneratedOutput: React.FC<GeneratedOutputProps> = ({ content, isTestExecution }) => {
+// Status display configuration
+const STATUS_CONFIG: Record<ConversationStatus, { label: string; className: string }> = {
+  RESPOND: { label: 'RESPOND', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  FOLLOW_UP: { label: 'FOLLOW UP', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  ESCALATE: { label: 'ESCALATE', className: 'bg-orange-50 text-orange-700 border-orange-200' },
+  ESCALATED: { label: 'ESCALATED', className: 'bg-red-50 text-red-700 border-red-200' },
+  COMPLETE: { label: 'COMPLETE', className: 'bg-green-50 text-green-700 border-green-200' },
+};
+
+export const GeneratedOutput: React.FC<GeneratedOutputProps> = ({ content, isTestExecution, status }) => {
+  const statusConfig = status ? STATUS_CONFIG[status] : null;
+  
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[600px]">
       <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 rounded-t-xl">
@@ -19,9 +32,11 @@ export const GeneratedOutput: React.FC<GeneratedOutputProps> = ({ content, isTes
             </Badge>
           )}
         </div>
-        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-          ESCALATED
-        </Badge>
+        {statusConfig && (
+          <Badge variant="outline" className={cn("border", statusConfig.className)}>
+            {statusConfig.label}
+          </Badge>
+        )}
       </div>
       <div className="p-6 overflow-y-auto flex-1 bg-white">
         <div 

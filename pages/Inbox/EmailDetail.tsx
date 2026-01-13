@@ -9,6 +9,37 @@ import { Button, cn } from '../../components/UI';
 import { MOCK_LABELS } from '../../services/mockData';
 import { MessageComposer } from './MessageComposer';
 
+// --- Isa Email Signature ---
+const ISA_SIGNATURE = `
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; font-size: 13px; line-height: 1.3; max-width: 400px; margin-top: 12px;">
+    <div style="border-top: 1px solid #e0e0e0; padding-top: 12px;">
+        <div style="font-weight: 500; color: #1a1a1a; margin-bottom: 2px;">Isa Bell</div>
+        <div style="color: #666; font-size: 12px; margin-bottom: 12px;">Digital Sales</div>
+        
+        <div style="margin-bottom: 10px;">
+            <a href="https://www.twilio.com?utm_source=email_signature" style="display: inline-block;">
+                <img src="https://www.twilio.com/content/dam/twilio-internal/email-signature/twilio-logo.png" width="110" height="33" alt="Twilio" style="vertical-align: middle;">
+            </a>
+        </div>
+        
+        <div style="font-size: 11px; color: #666; margin-bottom: 2px;">EMAIL</div>
+        <div style="margin-bottom: 12px;">
+            <a href="mailto:isa@twilio.com" style="color: #1a1a1a; text-decoration: none;">isa@twilio.com</a>
+        </div>
+    </div>
+    
+    <div style="margin-top: 10px; padding: 8px; background-color: #f5f5f5; border-left: 3px solid #ddd; font-size: 10px; color: #666; line-height: 1.3;">
+        Isa Bell is powered by AI and may generate information that is inaccurate or does not meet your needs or expectations. You should independently verify this information before using it. By using Isa Bell, you understand that any information you provide will be processed to generate a response. You are responsible for any information you share. Twilio is not responsible for your use of this generated information, and your use of Isa Bell does not modify your agreement with Twilio. For more information on how Isa Bell processes and protects your personal information, review Twilio's Privacy Notice.
+        <br><br>
+        <div style="text-align: center; margin-top: 4px;">
+            <a href="https://pages.twilio.com/TW_SG_Email-Preference-Center.html?mkt_unsubscribe=1" style="color: #555; text-decoration: none; font-size: 11px; font-weight: 600;">
+                📧 Unsubscribe or manage email preferences
+            </a>
+        </div>
+    </div>
+</div>
+`;
+
 // --- Salesforce Icon ---
 const SalesforceIcon = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className} xmlns="http://www.w3.org/2000/svg">
@@ -276,7 +307,14 @@ export const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onDelet
                     </div>
                   </div>
 
-                  <div className={cn("prose prose-slate prose-sm max-w-none text-slate-800 pl-14", !isLast && "text-slate-600")} dangerouslySetInnerHTML={{ __html: item.body }} />
+                  <div 
+                    className={cn("prose prose-slate prose-sm max-w-none text-slate-800 pl-14", !isLast && "text-slate-600")} 
+                    dangerouslySetInnerHTML={{ 
+                      __html: item.senderEmail === 'isa@twilio.com' 
+                        ? item.body + ISA_SIGNATURE 
+                        : item.body 
+                    }} 
+                  />
                 </div>
               );
             })}

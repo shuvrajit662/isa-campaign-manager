@@ -14,7 +14,8 @@ import {
   DebuggerAssistant, 
   GuardrailCheck, 
   KnowledgeGroup, 
-  ToolUsage 
+  ToolUsage,
+  ConversationStatus
 } from '../../services/api';
 
 import { MOCK_GUARDRAILS, MOCK_KNOWLEDGE_GROUPS, SAMPLE_EMAIL_BODY } from './constants';
@@ -79,6 +80,7 @@ export const Debugger = () => {
   const [guardrailReason, setGuardrailReason] = useState<string>('');
   const [guardrailScore, setGuardrailScore] = useState<number>(0.9);
   const [generatedOutput, setGeneratedOutput] = useState<string>(SAMPLE_EMAIL_BODY);
+  const [conversationStatus, setConversationStatus] = useState<ConversationStatus | null>(null);
   const [knowledgeGroups, setKnowledgeGroups] = useState<KnowledgeGroup[]>(MOCK_KNOWLEDGE_GROUPS);
   const [toolUsages, setToolUsages] = useState<ToolUsage[]>([]);
   const [runningTests, setRunningTests] = useState<Set<number>>(new Set());
@@ -114,6 +116,7 @@ export const Debugger = () => {
         setGuardrailReason(debugData.guardrailReason || '');
         setGuardrailScore(debugData.guardrailScore || 0);
         setGeneratedOutput(debugData.generatedOutput || SAMPLE_EMAIL_BODY);
+        setConversationStatus(debugData.conversationStatus);
         if (debugData.knowledgeGroups.length > 0) {
           setKnowledgeGroups(debugData.knowledgeGroups);
         }
@@ -231,7 +234,8 @@ export const Debugger = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <GeneratedOutput 
             content={generatedOutput} 
-            isTestExecution={isTestExecution} 
+            isTestExecution={isTestExecution}
+            status={conversationStatus}
           />
           <GuardrailsPanel 
             guardrails={guardrails} 

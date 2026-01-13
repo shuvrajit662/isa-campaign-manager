@@ -9,15 +9,20 @@ export const TRACE_METADATA = {
 
 // --- Mock Guardrails ---
 export const MOCK_GUARDRAILS: GuardrailCheck[] = [
-  { id: 'hasGreeting', name: 'Has Greeting', description: 'Does the email contain a greeting?', status: true, score: 0.9 },
-  { id: 'isTwilioRelated', name: 'Is Twilio Related', description: 'Is this email about Twilio products or services?', status: true, score: 0.9 },
-  { id: 'notRobotic', name: 'Not Robotic', description: 'Does the email sound natural and human-like?', status: true, score: 0.9 },
-  { id: 'isEnglish', name: 'Is English', description: 'Is this response written in English?', status: true, score: 0.9 },
-  { id: 'noIsaScheduling', name: 'No ISA Scheduling', description: 'Does the email avoid offering ISA to personally schedule?', status: true, score: 0.9 },
-  { id: 'noSynchronousHumanInteraction', name: 'No Synchronous Human Interaction', description: 'Does the email avoid suggesting synchronous calls/demos?', status: true, score: 0.9 },
-  { id: 'comprehensiveValue', name: 'Comprehensive Value', description: 'Does this email provide comprehensive, valuable information?', status: true, score: 0.9 },
-  { id: 'linksRelevant', name: 'Links Relevant', description: 'Are the links relevant to the conversation?', status: true, score: 0.9 },
-  { id: 'isWellFormed', name: 'Is Well Formed', description: 'Is the email professionally formatted?', status: true, score: 0.9 },
+  { id: 'hasGreeting', name: 'Has Greeting', description: 'Does the email contain a greeting?', status: 'pass' },
+  { id: 'isTwilioRelated', name: 'Is Twilio Related', description: 'Is this email about Twilio products or services?', status: 'pass' },
+  { id: 'isRobotic', name: 'Not Robotic', description: 'Does the email sound natural and human-like?', status: 'pass', reasoning: 'The email sounds natural with varied sentence rhythm and direct statements.' },
+  { id: 'isPreferredLanguageUsed', name: 'Preferred Language Used', description: "Is the email written in the customer's preferred language?", status: 'pass' },
+  { id: 'isaScheduling', name: 'No ISA Scheduling', description: 'Does the email avoid offering ISA to personally schedule?', status: 'pass' },
+  { id: 'synchronousHumanInteraction', name: 'No Synchronous Human Interaction', description: 'Does the email avoid suggesting synchronous calls/demos?', status: 'pass' },
+  { id: 'comprehensiveValue', name: 'Comprehensive Value', description: 'Does this email provide comprehensive, valuable information?', status: 'pass' },
+  { id: 'linksRelevant', name: 'Links Relevant', description: 'Are the links relevant to the conversation?', status: 'pass' },
+  { id: 'isWellFormed', name: 'Is Well Formed', description: 'Is the email professionally formatted?', status: 'pass' },
+  { id: 'htmlFormattingCompliant', name: 'HTML Formatting', description: 'Is the email content properly wrapped in <div> tags?', status: 'pass' },
+  { id: 'dsrIntro', name: 'DSR Introduction', description: 'Does this DSR introduction email start with a brief introduction?', status: 'not_applicable' },
+  { id: 'dsrNoPricing', name: 'DSR No Pricing', description: 'Does this DSR introduction email avoid mentioning pricing?', status: 'not_applicable' },
+  { id: 'dsrNoResources', name: 'DSR No Resources', description: 'Does this DSR introduction email avoid sharing documentation links?', status: 'not_applicable' },
+  { id: 'dsrCsatInclusion', name: 'DSR CSAT Inclusion', description: 'Does this DSR introduction email include a CSAT survey request?', status: 'not_applicable' },
 ];
 
 // --- Mock Knowledge Groups ---
